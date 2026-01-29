@@ -10,6 +10,7 @@ import { ReelsModule } from './reels/reels.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guards';
 import { RolesGuard } from './common/guards/roles.guards';
 import { ReelRequiredGuard } from './common/guards/reels-required.guard';
+import { InteractionsModule } from './interactions/interactions.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { ReelRequiredGuard } from './common/guards/reels-required.guard';
     UsersModule,
     AuthModule,
     ReelsModule,
+    InteractionsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
