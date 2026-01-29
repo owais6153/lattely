@@ -41,7 +41,7 @@ export class GooglePlacesService {
   }
 
   private maxResults() {
-    return Number(this.cfg.get<string>('GOOGLE_PLACES_MAX_RESULTS') || '10');
+    return Number(this.cfg.get<string>('GOOGLE_PLACES_MAX_RESULTS') || '1');
   }
 
   private haversineMeters(

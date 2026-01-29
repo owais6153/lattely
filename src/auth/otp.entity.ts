@@ -28,9 +28,6 @@ export class Otp {
   @Column({ type: 'datetime' })
   expiresAt: Date;
 
-  @Column({ type: 'int', default: 0 })
-  attempts: number;
-
   @Column({ type: 'datetime', nullable: true })
   lastSentAt: Date | null;
 

@@ -36,7 +36,6 @@ export class OtpService {
       purpose,
       codeHash: this.hashCode(code),
       expiresAt: new Date(Date.now() + ttlMin * 60 * 1000),
-      attempts: 0,
       lastSentAt: new Date(),
     });
 
@@ -67,7 +66,7 @@ export class OtpService {
   ): Promise<boolean> {
     const otp = await this.repo.findOne({
       where: { user: { id: userId }, purpose } as any,
-      select: ['id', 'codeHash', 'expiresAt', 'attempts'],
+      select: ['id', 'codeHash', 'expiresAt'],
       relations: ['user'],
     });
 
@@ -75,12 +74,7 @@ export class OtpService {
     if (otp.expiresAt.getTime() < Date.now())
       throw new BadRequestException('OTP expired.');
 
-    const maxAttempts = Number(this.cfg.get<string>('OTP_MAX_ATTEMPTS') || '5');
-    if (otp.attempts >= maxAttempts)
-      throw new BadRequestException('OTP attempts exceeded.');
-
     const ok = otp.codeHash === this.hashCode(code);
-    otp.attempts += 1;
     await this.repo.save(otp);
 
     if (!ok) throw new BadRequestException('Invalid OTP.');

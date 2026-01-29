@@ -65,6 +65,9 @@ export class User {
   @OneToOne(() => Reel, (reel) => reel.user)
   reel?: Reel;
 
+  @Column({ type: 'varchar', length: 500, nullable: true, default: null })
+  fcmToken: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
