@@ -15,7 +15,7 @@ export class FeedController {
     return this.feed.getFeed(req.user.id, {
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 20,
-      radiusKm: radiusKm ? Number(radiusKm) : 50,
+      radiusKm: radiusKm ? Number(radiusKm) : 16.0934, // 10 miles
     });
   }
 }

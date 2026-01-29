@@ -92,7 +92,7 @@ export class ReelsService {
     const updatedUser = await this.users.markReelUploaded(userId);
 
     return {
-      message: 'Reel uploaded. You can now use the app.',
+      message: 'Reel uploaded.',
       user: updatedUser,
       reel: {
         id: reel.id,

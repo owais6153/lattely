@@ -11,6 +11,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guards';
 import { RolesGuard } from './common/guards/roles.guards';
 import { ReelRequiredGuard } from './common/guards/reels-required.guard';
 import { InteractionsModule } from './interactions/interactions.module';
+import { FeedModule } from './feed/feed.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { InteractionsModule } from './interactions/interactions.module';
     AuthModule,
     ReelsModule,
     InteractionsModule,
+    FeedModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

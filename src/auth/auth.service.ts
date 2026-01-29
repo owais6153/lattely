@@ -108,7 +108,7 @@ export class AuthService {
     const updated = await this.users.markEmailVerified(user.id);
 
     return {
-      message: 'Email verified. Please upload your reel to continue.',
+      message: 'Email verified. Please upload your vibe video to continue.',
       user: updated,
     };
   }
