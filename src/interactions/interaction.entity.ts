@@ -6,13 +6,10 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
-  JoinColumn,
-  OneToOne,
 } from 'typeorm';
 import { User } from '../users/user.entity';
 import { Reel } from '../reels/reel.entity';
 import { InteractionProposal } from './proposal.entity';
-import { RestaurantOption } from './restaurant-option.entity';
 
 export type InteractionStatus =
   | 'PENDING'
@@ -38,15 +35,32 @@ export class InteractionRequest {
   @ManyToOne(() => Reel, { onDelete: 'CASCADE' })
   reel: Reel;
 
+  // Final agreed time (on ACCEPT)
   @Column({ type: 'datetime', nullable: true })
   acceptedStartAt: Date | null;
 
   @Column({ type: 'int', nullable: true })
   acceptedDurationSec: number | null;
 
-  @OneToOne(() => RestaurantOption, { nullable: true })
-  @JoinColumn()
-  chosenRestaurantOption: RestaurantOption | null;
+  // Final restaurant (on ACCEPT)
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  acceptedGooglePlaceId: string | null;
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  acceptedRestaurantName: string | null;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  acceptedRestaurantAddress: string | null;
+
+  @Column({ type: 'double', nullable: true })
+  acceptedRestaurantLat: number | null;
+
+  @Column({ type: 'double', nullable: true })
+  acceptedRestaurantLng: number | null;
+
+  // For 30-day cooldown
+  @Column({ type: 'datetime', nullable: true })
+  rejectedAt: Date | null;
 
   @OneToMany(() => InteractionProposal, (p) => p.request)
   proposals: InteractionProposal[];

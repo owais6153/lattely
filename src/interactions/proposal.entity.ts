@@ -3,12 +3,10 @@ import {
   CreateDateColumn,
   Entity,
   ManyToOne,
-  OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { User } from '../users/user.entity';
 import { InteractionRequest } from './interaction.entity';
-import { RestaurantOption } from './restaurant-option.entity';
 
 export type ProposalStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'SUPERSEDED';
 
@@ -28,15 +26,31 @@ export class InteractionProposal {
   @Column({ type: 'datetime' })
   proposedStartAt: Date;
 
-  // Date duration in seconds (default 90 min)
   @Column({ type: 'int' })
   durationSec: number;
 
   @Column({ type: 'varchar', length: 20, default: 'PENDING' })
   status: ProposalStatus;
 
-  @OneToMany(() => RestaurantOption, (o) => o.proposal)
-  restaurantOptions: RestaurantOption[];
+  // System-chosen single restaurant for THIS proposal/time
+  @Column({ type: 'varchar', length: 120 })
+  googlePlaceId: string;
+
+  @Column({ type: 'varchar', length: 200 })
+  restaurantName: string;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  restaurantAddress: string | null;
+
+  @Column({ type: 'double' })
+  restaurantLat: number;
+
+  @Column({ type: 'double' })
+  restaurantLng: number;
+
+  // best-effort computed
+  @Column({ type: 'boolean', default: false })
+  openAtProposedTime: boolean;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -10,7 +10,18 @@ type Place = {
   formattedAddress?: string;
   location?: { latitude?: number; longitude?: number };
   regularOpeningHours?: { periods?: Period[] };
-  timeZone?: { id?: string }; // IANA timezone
+  timeZone?: { id?: string };
+};
+
+type Candidate = {
+  googlePlaceId: string;
+  name: string;
+  address: string | null;
+  lat: number;
+  lng: number;
+  openAtProposedTime: boolean;
+  availabilityVerified: boolean;
+  distanceMeters: number;
 };
 
 @Injectable()
@@ -33,6 +44,23 @@ export class GooglePlacesService {
     return Number(this.cfg.get<string>('GOOGLE_PLACES_MAX_RESULTS') || '10');
   }
 
+  private haversineMeters(
+    aLat: number,
+    aLng: number,
+    bLat: number,
+    bLng: number,
+  ) {
+    const R = 6371000;
+    const toRad = (x: number) => (x * Math.PI) / 180;
+    const dLat = toRad(bLat - aLat);
+    const dLng = toRad(bLng - aLng);
+    const s1 = Math.sin(dLat / 2);
+    const s2 = Math.sin(dLng / 2);
+    const aa =
+      s1 * s1 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * s2 * s2;
+    return 2 * R * Math.asin(Math.sqrt(aa));
+  }
+
   private asLocalParts(date: Date, timeZone: string) {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone,
@@ -46,7 +74,6 @@ export class GooglePlacesService {
     const hour = Number(parts.find((p) => p.type === 'hour')?.value || '0');
     const minute = Number(parts.find((p) => p.type === 'minute')?.value || '0');
 
-    // Map to Google day numbers: 0=Sunday..6=Saturday (common in APIs)
     const dayMap: Record<string, number> = {
       Sun: 0,
       Mon: 1,
@@ -75,14 +102,12 @@ export class GooglePlacesService {
       const o = p.open;
       const c = p.close;
 
-      // 24/7 case: close missing (documented for always-open) :contentReference[oaicite:4]{index=4}
+      // 24/7 case (close missing)
       if (o?.day === 0 && o?.hour === 0 && o?.minute === 0 && !c) return true;
 
       if (o?.day == null || o.hour == null || o.minute == null) continue;
-
       const openMin = this.minutesOfWeek(o.day, o.hour, o.minute);
 
-      // if close missing, assume open-ended (treat as open)
       if (!c || c.day == null || c.hour == null || c.minute == null) {
         if (now >= openMin) return true;
         continue;
@@ -90,11 +115,9 @@ export class GooglePlacesService {
 
       const closeMin = this.minutesOfWeek(c.day, c.hour, c.minute);
 
-      // Normal (same week window)
       if (closeMin > openMin) {
         if (now >= openMin && now < closeMin) return true;
       } else {
-        // Overnight wrap (e.g. open Fri 20:00 close Sat 02:00)
         if (now >= openMin || now < closeMin) return true;
       }
     }
@@ -102,7 +125,7 @@ export class GooglePlacesService {
     return false;
   }
 
-  async nearbyRestaurants(
+  async pickOneRestaurant(
     midLat: number,
     midLng: number,
     proposedStartAtISO: string,
@@ -111,28 +134,28 @@ export class GooglePlacesService {
     if (Number.isNaN(proposed.getTime()))
       throw new BadRequestException('Invalid proposedStartAt');
 
-    const url = 'https://places.googleapis.com/v1/places:searchNearby';
-
-    // Nearby Search (New) POST + FieldMask header is required :contentReference[oaicite:5]{index=5}
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': this.apiKey(),
-        'X-Goog-FieldMask':
-          'places.id,places.displayName,places.formattedAddress,places.location,places.regularOpeningHours,places.timeZone',
-      },
-      body: JSON.stringify({
-        includedTypes: ['restaurant'],
-        maxResultCount: this.maxResults(),
-        locationRestriction: {
-          circle: {
-            center: { latitude: midLat, longitude: midLng },
-            radius: this.radiusMeters(),
-          },
+    const res = await fetch(
+      'https://places.googleapis.com/v1/places:searchNearby',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': this.apiKey(),
+          'X-Goog-FieldMask':
+            'places.id,places.displayName,places.formattedAddress,places.location,places.regularOpeningHours,places.timeZone',
         },
-      }),
-    });
+        body: JSON.stringify({
+          includedTypes: ['restaurant'],
+          maxResultCount: this.maxResults(),
+          locationRestriction: {
+            circle: {
+              center: { latitude: midLat, longitude: midLng },
+              radius: this.radiusMeters(),
+            },
+          },
+        }),
+      },
+    );
 
     if (!res.ok) {
       const t = await res.text().catch(() => '');
@@ -142,8 +165,7 @@ export class GooglePlacesService {
     const data = (await res.json()) as { places?: Place[] };
     const places = data.places || [];
 
-    const confirmedOpen: any[] = [];
-    const unknownOrUnverifiable: any[] = [];
+    const candidates: Candidate[] = [];
 
     for (const p of places) {
       const id = p.id;
@@ -151,45 +173,47 @@ export class GooglePlacesService {
       const address = p.formattedAddress || null;
       const lat = p.location?.latitude;
       const lng = p.location?.longitude;
-
       if (!id || lat == null || lng == null) continue;
 
       const periods = p.regularOpeningHours?.periods || [];
       const tz = p.timeZone?.id;
 
       let openAtTime = false;
-      let canVerify = false;
+      let verified = false;
 
       if (tz && periods.length) {
-        canVerify = true;
+        verified = true;
         openAtTime = this.isOpenAt(proposed, tz, periods);
       }
 
-      const item = {
+      candidates.push({
         googlePlaceId: id,
         name,
         address,
         lat,
         lng,
-        openAtProposedTime: canVerify ? openAtTime : false,
-        availabilityVerified: canVerify,
-      };
-
-      if (canVerify && openAtTime) confirmedOpen.push(item);
-      else unknownOrUnverifiable.push(item);
+        openAtProposedTime: verified ? openAtTime : false,
+        availabilityVerified: verified,
+        distanceMeters: this.haversineMeters(midLat, midLng, lat, lng),
+      });
     }
 
-    // If we found verified-open restaurants, return only those.
-    // Otherwise return the best-effort list (availability might not be verifiable for some places).
-    if (confirmedOpen.length > 0)
-      return {
-        items: confirmedOpen,
-        availabilityMode: 'VERIFIED_OPEN' as const,
-      };
+    if (candidates.length === 0)
+      throw new BadRequestException('No restaurants found nearby.');
+
+    // Prefer verified-open restaurants if possible, then nearest to midpoint
+    const verifiedOpen = candidates.filter(
+      (c) => c.availabilityVerified && c.openAtProposedTime,
+    );
+    const pool = verifiedOpen.length ? verifiedOpen : candidates;
+
+    pool.sort((a, b) => a.distanceMeters - b.distanceMeters);
+
+    const chosen = pool[0];
 
     return {
-      items: unknownOrUnverifiable,
-      availabilityMode: 'BEST_EFFORT' as const,
+      chosen,
+      availabilityMode: verifiedOpen.length ? 'VERIFIED_OPEN' : 'BEST_EFFORT',
     };
   }
 }

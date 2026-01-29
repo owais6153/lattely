@@ -5,10 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, MoreThanOrEqual } from 'typeorm';
 import { InteractionRequest } from './interaction.entity';
 import { InteractionProposal } from './proposal.entity';
-import { RestaurantOption } from './restaurant-option.entity';
 import { Reel } from '../reels/reel.entity';
 import { User } from '../users/user.entity';
 import { GooglePlacesService } from './google-places.service';
@@ -20,8 +19,6 @@ export class InteractionsService {
     private readonly reqRepo: Repository<InteractionRequest>,
     @InjectRepository(InteractionProposal)
     private readonly propRepo: Repository<InteractionProposal>,
-    @InjectRepository(RestaurantOption)
-    private readonly optRepo: Repository<RestaurantOption>,
     @InjectRepository(Reel) private readonly reelRepo: Repository<Reel>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     private readonly places: GooglePlacesService,
@@ -34,6 +31,10 @@ export class InteractionsService {
   private ensureParty(userId: string, req: InteractionRequest) {
     const ok = req.requester?.id === userId || req.recipient?.id === userId;
     if (!ok) throw new ForbiddenException('Not allowed.');
+  }
+
+  private thirtyDaysAgo() {
+    return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   }
 
   async createDateRequest(
@@ -63,18 +64,37 @@ export class InteractionsService {
     if (Number.isNaN(startAt.getTime()))
       throw new BadRequestException('Invalid proposedStartAt.');
 
-    // Optional: prevent spamming multiple pending requests for same reel
-    const existing = await this.reqRepo.findOne({
+    // Block if this requester was rejected by this same recipient in last 30 days
+    const recentRejection = await this.reqRepo.findOne({
       where: {
-        reel: { id: reelId } as any,
-        requester: { id: actorId } as any,
+        requester: { id: actor.id } as any,
+        recipient: { id: recipient.id } as any,
+        status: 'REJECTED' as any,
+        rejectedAt: MoreThanOrEqual(this.thirtyDaysAgo()),
+      } as any,
+      order: { rejectedAt: 'DESC' as any },
+    });
+
+    if (recentRejection) {
+      throw new BadRequestException(
+        'You cannot request this user for 30 days due to a previous rejection.',
+      );
+    }
+
+    // Prevent multiple open requests at once between same pair (optional but recommended)
+    const openExisting = await this.reqRepo.findOne({
+      where: {
+        requester: { id: actor.id } as any,
+        recipient: { id: recipient.id } as any,
         status: 'PENDING' as any,
       } as any,
     });
-    if (existing)
-      throw new BadRequestException('A pending request already exists.');
+    if (openExisting)
+      throw new BadRequestException(
+        'You already have a pending request with this user.',
+      );
 
-    const dur = durationSec ?? 5400; // 90 min default
+    const dur = durationSec ?? 5400;
 
     const req = await this.reqRepo.save(
       this.reqRepo.create({
@@ -84,8 +104,25 @@ export class InteractionsService {
         reel: reel as any,
         acceptedStartAt: null,
         acceptedDurationSec: null,
-        chosenRestaurantOption: null,
+        acceptedGooglePlaceId: null,
+        acceptedRestaurantName: null,
+        acceptedRestaurantAddress: null,
+        acceptedRestaurantLat: null,
+        acceptedRestaurantLng: null,
+        rejectedAt: null,
       }),
+    );
+
+    const mid = this.midpoint(
+      actor.lat,
+      actor.lng,
+      recipient.lat,
+      recipient.lng,
+    );
+    const { chosen, availabilityMode } = await this.places.pickOneRestaurant(
+      mid.lat,
+      mid.lng,
+      proposedStartAt,
     );
 
     const proposal = await this.propRepo.save(
@@ -95,34 +132,13 @@ export class InteractionsService {
         proposedStartAt: startAt,
         durationSec: dur,
         status: 'PENDING',
+        googlePlaceId: chosen.googlePlaceId,
+        restaurantName: chosen.name,
+        restaurantAddress: chosen.address,
+        restaurantLat: chosen.lat,
+        restaurantLng: chosen.lng,
+        openAtProposedTime: chosen.openAtProposedTime,
       }),
-    );
-
-    // Google restaurants near midpoint
-    const mid = this.midpoint(
-      actor.lat,
-      actor.lng,
-      recipient.lat,
-      recipient.lng,
-    );
-    const { items, availabilityMode } = await this.places.nearbyRestaurants(
-      mid.lat,
-      mid.lng,
-      proposedStartAt,
-    );
-
-    const options = await this.optRepo.save(
-      items.map((r) =>
-        this.optRepo.create({
-          proposal: proposal as any,
-          googlePlaceId: r.googlePlaceId,
-          name: r.name,
-          address: r.address,
-          lat: r.lat,
-          lng: r.lng,
-          openAtProposedTime: r.openAtProposedTime,
-        }),
-      ),
     );
 
     return {
@@ -133,7 +149,14 @@ export class InteractionsService {
         id: proposal.id,
         proposedStartAt: proposal.proposedStartAt,
         durationSec: proposal.durationSec,
-        restaurantOptions: options,
+        restaurant: {
+          googlePlaceId: proposal.googlePlaceId,
+          name: proposal.restaurantName,
+          address: proposal.restaurantAddress,
+          lat: proposal.restaurantLat,
+          lng: proposal.restaurantLng,
+          openAtProposedTime: proposal.openAtProposedTime,
+        },
       },
       recipient: {
         id: recipient.id,
@@ -197,8 +220,6 @@ export class InteractionsService {
         'reel',
         'proposals',
         'proposals.proposer',
-        'proposals.restaurantOptions',
-        'chosenRestaurantOption',
       ],
     });
 
@@ -214,7 +235,15 @@ export class InteractionsService {
       status: req.status,
       acceptedStartAt: req.acceptedStartAt,
       acceptedDurationSec: req.acceptedDurationSec,
-      chosenRestaurantOption: req.chosenRestaurantOption,
+      acceptedRestaurant: req.acceptedGooglePlaceId
+        ? {
+            googlePlaceId: req.acceptedGooglePlaceId,
+            name: req.acceptedRestaurantName,
+            address: req.acceptedRestaurantAddress,
+            lat: req.acceptedRestaurantLat,
+            lng: req.acceptedRestaurantLng,
+          }
+        : null,
       requester: {
         id: req.requester.id,
         firstName: req.requester.firstName,
@@ -238,7 +267,14 @@ export class InteractionsService {
           firstName: p.proposer.firstName,
           lastName: p.proposer.lastName,
         },
-        restaurantOptions: p.restaurantOptions,
+        restaurant: {
+          googlePlaceId: p.googlePlaceId,
+          name: p.restaurantName,
+          address: p.restaurantAddress,
+          lat: p.restaurantLat,
+          lng: p.restaurantLng,
+          openAtProposedTime: p.openAtProposedTime,
+        },
       })),
     };
   }
@@ -248,20 +284,13 @@ export class InteractionsService {
     requestId: string,
     body: {
       action: 'ACCEPT' | 'REJECT' | 'COUNTER';
-      chosenRestaurantOptionId?: string;
       proposedStartAt?: string;
       durationSec?: number;
     },
   ) {
     const req = await this.reqRepo.findOne({
       where: { id: requestId } as any,
-      relations: [
-        'requester',
-        'recipient',
-        'proposals',
-        'proposals.proposer',
-        'proposals.restaurantOptions',
-      ],
+      relations: ['requester', 'recipient', 'proposals', 'proposals.proposer'],
     });
 
     if (!req) throw new NotFoundException('Request not found.');
@@ -290,27 +319,25 @@ export class InteractionsService {
       await this.propRepo.save(latest);
 
       req.status = 'REJECTED';
+      req.rejectedAt = new Date();
       await this.reqRepo.save(req);
 
       return { message: 'Request rejected.', status: req.status };
     }
 
     if (body.action === 'ACCEPT') {
-      if (!body.chosenRestaurantOptionId)
-        throw new BadRequestException('chosenRestaurantOptionId is required.');
-
-      const option = latest.restaurantOptions?.find(
-        (o) => o.id === body.chosenRestaurantOptionId,
-      );
-      if (!option) throw new BadRequestException('Invalid restaurant option.');
-
       latest.status = 'ACCEPTED';
       await this.propRepo.save(latest);
 
       req.status = 'ACCEPTED';
       req.acceptedStartAt = latest.proposedStartAt;
       req.acceptedDurationSec = latest.durationSec;
-      req.chosenRestaurantOption = option as any;
+
+      req.acceptedGooglePlaceId = latest.googlePlaceId;
+      req.acceptedRestaurantName = latest.restaurantName;
+      req.acceptedRestaurantAddress = latest.restaurantAddress;
+      req.acceptedRestaurantLat = latest.restaurantLat;
+      req.acceptedRestaurantLng = latest.restaurantLng;
 
       await this.reqRepo.save(req);
 
@@ -319,7 +346,13 @@ export class InteractionsService {
         status: req.status,
         acceptedStartAt: req.acceptedStartAt,
         acceptedDurationSec: req.acceptedDurationSec,
-        chosenRestaurantOption: option,
+        restaurant: {
+          googlePlaceId: req.acceptedGooglePlaceId,
+          name: req.acceptedRestaurantName,
+          address: req.acceptedRestaurantAddress,
+          lat: req.acceptedRestaurantLat,
+          lng: req.acceptedRestaurantLng,
+        },
       };
     }
 
@@ -330,26 +363,12 @@ export class InteractionsService {
     if (Number.isNaN(startAt.getTime()))
       throw new BadRequestException('Invalid proposedStartAt.');
 
-    // supersede old proposal
     latest.status = 'SUPERSEDED';
     await this.propRepo.save(latest);
 
     const proposer = await this.userRepo.findOne({ where: { id: userId } });
     if (!proposer) throw new BadRequestException('User not found.');
 
-    const duration = body.durationSec ?? latest.durationSec ?? 5400;
-
-    const newProposal = await this.propRepo.save(
-      this.propRepo.create({
-        request: req as any,
-        proposer: proposer as any,
-        proposedStartAt: startAt,
-        durationSec: duration,
-        status: 'PENDING',
-      }),
-    );
-
-    // Re-generate restaurants from Google for the counter time
     const requester = await this.userRepo.findOne({
       where: { id: req.requester.id },
     });
@@ -365,24 +384,28 @@ export class InteractionsService {
       recipient.lat,
       recipient.lng,
     );
-    const { items, availabilityMode } = await this.places.nearbyRestaurants(
+    const { chosen, availabilityMode } = await this.places.pickOneRestaurant(
       mid.lat,
       mid.lng,
       body.proposedStartAt,
     );
 
-    const options = await this.optRepo.save(
-      items.map((r) =>
-        this.optRepo.create({
-          proposal: newProposal as any,
-          googlePlaceId: r.googlePlaceId,
-          name: r.name,
-          address: r.address,
-          lat: r.lat,
-          lng: r.lng,
-          openAtProposedTime: r.openAtProposedTime,
-        }),
-      ),
+    const duration = body.durationSec ?? latest.durationSec ?? 5400;
+
+    const newProposal = await this.propRepo.save(
+      this.propRepo.create({
+        request: req as any,
+        proposer: proposer as any,
+        proposedStartAt: startAt,
+        durationSec: duration,
+        status: 'PENDING',
+        googlePlaceId: chosen.googlePlaceId,
+        restaurantName: chosen.name,
+        restaurantAddress: chosen.address,
+        restaurantLat: chosen.lat,
+        restaurantLng: chosen.lng,
+        openAtProposedTime: chosen.openAtProposedTime,
+      }),
     );
 
     req.status = 'NEGOTIATING';
@@ -396,7 +419,14 @@ export class InteractionsService {
         id: newProposal.id,
         proposedStartAt: newProposal.proposedStartAt,
         durationSec: newProposal.durationSec,
-        restaurantOptions: options,
+        restaurant: {
+          googlePlaceId: newProposal.googlePlaceId,
+          name: newProposal.restaurantName,
+          address: newProposal.restaurantAddress,
+          lat: newProposal.restaurantLat,
+          lng: newProposal.restaurantLng,
+          openAtProposedTime: newProposal.openAtProposedTime,
+        },
       },
     };
   }
