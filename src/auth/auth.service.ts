@@ -56,15 +56,17 @@ export class AuthService {
       isEmailVerified: false,
       reelUploaded: false,
       gender: dto.gender,
-
       firstName: dto.firstName.trim(),
       lastName: dto.lastName.trim(),
 
-      address: dto.address.trim(),
-      lat: dto.lat,
-      lng: dto.lng,
-      city: dto.city?.trim() ?? null,
-      country: dto.country?.trim() ?? null,
+      address: null,
+      lat: null,
+      lng: null,
+      city: null,
+      country: null,
+      interestedGender: null,
+      weekdaysAvailability: null,
+      weekendsAvailability: null,
     });
 
     const { code } = await this.otp.createOrReplace(

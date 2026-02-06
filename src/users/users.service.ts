@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
@@ -74,5 +74,48 @@ export class UsersService {
 
   async updatePasswordHash(userId: string, passwordHash: string) {
     await this.repo.update({ id: userId }, { passwordHash });
+  }
+  async updateLocation(userId: string, dto: any) {
+    await this.repo.update(
+      { id: userId },
+      {
+        address: dto.address.trim(),
+        lat: dto.lat,
+        lng: dto.lng,
+        city: dto.city?.trim() ?? null,
+        country: dto.country?.trim() ?? null,
+      },
+    );
+    return this.findById(userId);
+  }
+
+  async updatePreferences(userId: string, dto: any) {
+    await this.repo.update(
+      { id: userId },
+      {
+        interestedGender: dto.interestedGender,
+        weekdaysAvailability: dto.weekdaysAvailability,
+        weekendsAvailability: dto.weekendsAvailability,
+      },
+    );
+    return this.findById(userId);
+  }
+
+  async requireOnboardingReadyForFeed(userId: string) {
+    const u = await this.repo.findOne({ where: { id: userId } });
+    if (!u) throw new BadRequestException('User not found.');
+    if (!u.isEmailVerified)
+      throw new BadRequestException('Verify email first.');
+    if (!u.address || u.lat == null || u.lng == null)
+      throw new BadRequestException('Location is required.');
+    if (
+      !u.interestedGender ||
+      !u.weekdaysAvailability ||
+      !u.weekendsAvailability
+    ) {
+      throw new BadRequestException('Preferences are required.');
+    }
+    if (!u.reelUploaded) throw new BadRequestException('Upload reel first.');
+    return u;
   }
 }

@@ -9,11 +9,13 @@ import {
 } from 'typeorm';
 import { Reel } from '../reels/reel.entity';
 
-export enum Gender {
-  'MALE',
-  'FEMALE',
-  'OTHER',
-}
+export type Gender = 'MALE' | 'FEMALE' | 'NON_BINARY';
+export type InterestedGender =
+  | 'MALE'
+  | 'FEMALE'
+  | 'NON_BINARY'
+  | 'DOESNT_MATTER';
+export type AvailabilitySlot = 'MORNING' | 'EVENING';
 
 @Entity('users')
 export class User {
@@ -36,25 +38,24 @@ export class User {
   @Column({ type: 'boolean', default: false })
   reelUploaded: boolean;
 
-  @Column({ type: 'varchar', length: 10, default: 'OTHER' })
+  @Column({ type: 'varchar', length: 10, default: 'NON_BINARY' })
   gender: Gender;
 
-  // Required identity fields
   @Column({ type: 'varchar', length: 60 })
   firstName: string;
 
   @Column({ type: 'varchar', length: 60 })
   lastName: string;
 
-  // Required address + location on signup
-  @Column({ type: 'varchar', length: 300 })
-  address: string;
+  // Step 2: location (nullable until user completes it)
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  address: string | null;
 
-  @Column({ type: 'double', nullable: false })
-  lat: number;
+  @Column({ type: 'double', nullable: true })
+  lat: number | null;
 
-  @Column({ type: 'double', nullable: false })
-  lng: number;
+  @Column({ type: 'double', nullable: true })
+  lng: number | null;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   city: string | null;
@@ -62,11 +63,18 @@ export class User {
   @Column({ type: 'varchar', length: 100, nullable: true })
   country: string | null;
 
+  // Step 3: preferences (nullable until user completes it)
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  interestedGender: InterestedGender | null;
+
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  weekdaysAvailability: AvailabilitySlot | null;
+
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  weekendsAvailability: AvailabilitySlot | null;
+
   @OneToOne(() => Reel, (reel) => reel.user)
   reel?: Reel;
-
-  @Column({ type: 'varchar', length: 500, nullable: true, default: null })
-  fcmToken: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

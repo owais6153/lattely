@@ -11,6 +11,7 @@ import { InteractionProposal } from './proposal.entity';
 import { Reel } from '../reels/reel.entity';
 import { User } from '../users/user.entity';
 import { GooglePlacesService } from './google-places.service';
+import { assertTodayAndInAvailability, isWeekend } from './time-rules';
 
 @Injectable()
 export class InteractionsService {
@@ -96,6 +97,15 @@ export class InteractionsService {
 
     const dur = durationSec ?? 5400;
 
+    // before calling Google places
+    const dayIsWeekend = isWeekend(startAt);
+    const slot = dayIsWeekend
+      ? actor.weekendsAvailability
+      : actor.weekdaysAvailability;
+
+    if (!slot) throw new BadRequestException('Set availability first.');
+    assertTodayAndInAvailability(startAt, slot);
+
     const req = await this.reqRepo.save(
       this.reqRepo.create({
         status: 'PENDING',
@@ -112,6 +122,12 @@ export class InteractionsService {
         rejectedAt: null,
       }),
     );
+
+    if (!actor.lat || !actor.lng)
+      throw new BadRequestException('Actor lat, lng not defined');
+
+    if (!recipient.lat || !recipient.lng)
+      throw new BadRequestException('Recipient lat, lng not defined');
 
     const mid = this.midpoint(
       actor.lat,
@@ -185,7 +201,7 @@ export class InteractionsService {
         lastName: r.requester.lastName,
         gender: r.requester.gender,
       },
-      reelId: (r.reel as any).id,
+      reel: r.reel,
     }));
   }
 
@@ -207,7 +223,7 @@ export class InteractionsService {
         lastName: r.recipient.lastName,
         gender: r.recipient.gender,
       },
-      reelId: (r.reel as any).id,
+      reel: r.reel,
     }));
   }
 
@@ -256,7 +272,7 @@ export class InteractionsService {
         lastName: req.recipient.lastName,
         gender: req.recipient.gender,
       },
-      reelId: (req.reel as any).id,
+      reel: req.reel,
       proposals: proposals.map((p) => ({
         id: p.id,
         status: p.status,
@@ -378,6 +394,12 @@ export class InteractionsService {
     if (!requester || !recipient)
       throw new BadRequestException('Users missing.');
 
+    if (!requester.lat || !requester.lng)
+      throw new BadRequestException('Requester lat, lng not defined');
+
+    if (!recipient.lat || !recipient.lng)
+      throw new BadRequestException('Recipient lat, lng not defined');
+
     const mid = this.midpoint(
       requester.lat,
       requester.lng,
@@ -394,8 +416,8 @@ export class InteractionsService {
 
     const newProposal = await this.propRepo.save(
       this.propRepo.create({
-        request: req as any,
-        proposer: proposer as any,
+        request: req,
+        proposer: proposer,
         proposedStartAt: startAt,
         durationSec: duration,
         status: 'PENDING',

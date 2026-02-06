@@ -1,15 +1,11 @@
 import {
   IsEmail,
   IsEnum,
-  IsNumber,
-  IsOptional,
   IsString,
-  Max,
-  Min,
-  MinLength,
   MaxLength,
+  MinLength,
 } from 'class-validator';
-import { Gender } from '../users/user.entity';
+import type { Gender } from '../users/user.entity';
 
 export class RegisterDto {
   @IsEmail()
@@ -18,7 +14,7 @@ export class RegisterDto {
   @MinLength(8)
   password: string;
 
-  @IsEnum(['MALE', 'FEMALE', 'OTHER'])
+  @IsEnum(['MALE', 'FEMALE', 'NON_BINARY'])
   gender: Gender;
 
   @IsString()
@@ -28,30 +24,6 @@ export class RegisterDto {
   @IsString()
   @MaxLength(60)
   lastName: string;
-
-  @IsString()
-  @MaxLength(300)
-  address: string;
-
-  @IsNumber()
-  @Min(-90)
-  @Max(90)
-  lat: number;
-
-  @IsNumber()
-  @Min(-180)
-  @Max(180)
-  lng: number;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  city?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  country?: string;
 }
 
 export class VerifyEmailDto {
