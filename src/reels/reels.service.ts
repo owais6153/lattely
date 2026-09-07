@@ -1,16 +1,27 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Reel } from './reel.entity';
 import { UsersService } from '../users/users.service';
 import { getVideoDurationSec } from './video-metadata';
 import { unlink } from 'fs/promises';
+import { resolve, sep } from 'path';
 import { UploadReelMetaDto } from './reels.dto';
+import { InteractionRequest } from '../interactions/interaction.entity';
+
+const REEL_STORAGE_ROOT = resolve('public/uploads/reels');
 
 @Injectable()
 export class ReelsService {
   constructor(
     @InjectRepository(Reel) private readonly repo: Repository<Reel>,
+    @InjectRepository(InteractionRequest)
+    private readonly requestsRepo: Repository<InteractionRequest>,
     private readonly users: UsersService,
   ) {}
 
@@ -21,6 +32,53 @@ export class ReelsService {
     } catch {
       // ignore
     }
+  }
+
+  private storedFilePath(videoUrl: string) {
+    const filePath = resolve(videoUrl);
+    if (!filePath.startsWith(`${REEL_STORAGE_ROOT}${sep}`)) {
+      throw new BadRequestException('Invalid stored reel path.');
+    }
+    return filePath;
+  }
+
+  private reelResponse(reel: Reel) {
+    return {
+      id: reel.id,
+      videoUrl: reel.videoUrl,
+      durationSec: reel.durationSec,
+      createdAt: reel.createdAt,
+    };
+  }
+
+  private async inspectVideo(file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Video file is required.');
+
+    let durationSec = 0;
+    try {
+      durationSec = await getVideoDurationSec(file.path);
+    } catch {
+      await this.safeDelete(file.path);
+      throw new BadRequestException(
+        'Unable to read video duration. Please upload a valid video file.',
+      );
+    }
+
+    if (durationSec < 5 || durationSec > 60) {
+      await this.safeDelete(file.path);
+      throw new BadRequestException(
+        'Reel duration must be between 5 and 60 seconds.',
+      );
+    }
+    return durationSec;
+  }
+
+  async getCurrentReel(userId: string) {
+    const reel = await this.repo.findOne({
+      where: { user: { id: userId } } as any,
+    });
+    if (!reel) throw new NotFoundException('You do not have a reel.');
+    return this.reelResponse(reel);
   }
 
   async uploadReel(
@@ -50,24 +108,7 @@ export class ReelsService {
       throw new BadRequestException('You already uploaded a reel.');
     }
 
-    // True duration from video file
-    let durationSec = 0;
-    try {
-      durationSec = await getVideoDurationSec(file.path);
-    } catch {
-      await this.safeDelete(file.path);
-      throw new BadRequestException(
-        'Unable to read video duration. Please upload a valid video file.',
-      );
-    }
-
-    // Enforce 30s to 60s
-    if (durationSec < 5 || durationSec > 60) {
-      await this.safeDelete(file.path);
-      throw new BadRequestException(
-        'Reel duration must be between 5 and 60 seconds.',
-      );
-    }
+    const durationSec = await this.inspectVideo(file);
 
     // Build public URL
     const videoUrl = `public/uploads/reels/${file.filename}`;
@@ -86,7 +127,12 @@ export class ReelsService {
       lng,
     });
 
-    await this.repo.save(reel);
+    try {
+      await this.repo.save(reel);
+    } catch (error) {
+      await this.safeDelete(file.path);
+      throw error;
+    }
 
     // Mark user reelUploaded = true
     const updatedUser = await this.users.markReelUploaded(userId);
@@ -94,12 +140,82 @@ export class ReelsService {
     return {
       message: 'Reel uploaded.',
       user: updatedUser,
-      reel: {
-        id: reel.id,
-        videoUrl: reel.videoUrl,
-        durationSec: reel.durationSec,
-        createdAt: reel.createdAt,
-      },
+      reel: this.reelResponse(reel),
     };
+  }
+
+  async replaceReel(
+    userId: string,
+    file: Express.Multer.File,
+    meta: UploadReelMetaDto,
+  ) {
+    if (!file) throw new BadRequestException('Video file is required.');
+
+    const reel = await this.repo.findOne({
+      where: { user: { id: userId } } as any,
+    });
+    if (!reel) {
+      await this.safeDelete(file.path);
+      throw new NotFoundException('Upload a reel before replacing it.');
+    }
+
+    const previousFilePath = this.storedFilePath(reel.videoUrl);
+    const durationSec = await this.inspectVideo(file);
+    const previous = {
+      videoUrl: reel.videoUrl,
+      durationSec: reel.durationSec,
+      lat: reel.lat,
+      lng: reel.lng,
+    };
+
+    reel.videoUrl = `public/uploads/reels/${file.filename}`;
+    reel.durationSec = durationSec;
+    reel.lat = meta.lat ?? reel.lat;
+    reel.lng = meta.lng ?? reel.lng;
+
+    try {
+      await this.repo.save(reel);
+    } catch (error) {
+      Object.assign(reel, previous);
+      await this.safeDelete(file.path);
+      throw error;
+    }
+
+    await this.safeDelete(previousFilePath);
+    const user = await this.users.findById(userId);
+    return {
+      message: 'Reel replaced.',
+      user,
+      reel: this.reelResponse(reel),
+    };
+  }
+
+  async deleteReel(userId: string) {
+    const reel = await this.repo.findOne({
+      where: { user: { id: userId } } as any,
+    });
+    if (!reel) throw new NotFoundException('You do not have a reel.');
+
+    const requestCount = await this.requestsRepo.count({
+      where: { reel: { id: reel.id } } as any,
+    });
+    if (requestCount > 0) {
+      throw new ConflictException(
+        'This reel is linked to date requests and cannot be deleted. You can replace it instead.',
+      );
+    }
+
+    const filePath = this.storedFilePath(reel.videoUrl);
+    await this.users.markReelUploaded(userId, false);
+    try {
+      await this.repo.remove(reel);
+    } catch (error) {
+      await this.users.markReelUploaded(userId, true);
+      throw error;
+    }
+    const user = await this.users.findById(userId);
+    await this.safeDelete(filePath);
+
+    return { message: 'Reel deleted.', user };
   }
 }

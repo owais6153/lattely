@@ -67,8 +67,8 @@ export class UsersService {
     return this.findById(userId);
   }
 
-  async markReelUploaded(userId: string) {
-    await this.repo.update({ id: userId }, { reelUploaded: true });
+  async markReelUploaded(userId: string, reelUploaded = true) {
+    await this.repo.update({ id: userId }, { reelUploaded });
     return this.findById(userId);
   }
 
