@@ -1,10 +1,8 @@
 import { execFile } from 'child_process';
 
-import ffprobeStatic from 'ffprobe-static';
-
 export function getVideoDurationSec(filePath: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    const ffprobePath = ffprobeStatic.path;
+    const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
 
     // -v error: only errors
     // -show_entries format=duration: return duration

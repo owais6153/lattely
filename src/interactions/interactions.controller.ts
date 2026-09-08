@@ -64,6 +64,11 @@ export class InteractionsController {
     return this.interactions.decide(req.user.id, id, body.decision);
   }
 
+  @Post('requests/:id/cancel')
+  cancel(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.interactions.cancelMeetup(req.user.id, id);
+  }
+
   @Post('requests/:id/feedback')
   feedback(
     @Req() req: AuthenticatedRequest,

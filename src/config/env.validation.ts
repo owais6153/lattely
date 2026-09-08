@@ -116,7 +116,7 @@ export function validateEnvironment(config: Record<string, unknown>) {
     ),
     AGORA_TOKEN_TTL_SEC: positiveInteger(
       config.AGORA_TOKEN_TTL_SEC,
-      120,
+      65,
       'AGORA_TOKEN_TTL_SEC',
     ),
     OTP_MAX_ATTEMPTS: positiveInteger(

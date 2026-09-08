@@ -28,6 +28,7 @@ describe('validateEnvironment', () => {
       DB_RUN_MIGRATIONS: true,
       JWT_ACCESS_TTL_MINUTES: 15,
       JWT_REFRESH_TTL_DAYS: 30,
+      AGORA_TOKEN_TTL_SEC: 65,
     });
   });
 

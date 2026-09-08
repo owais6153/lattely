@@ -1,12 +1,20 @@
 import {
   IsDateString,
   IsBoolean,
+  IsArray,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
+  ArrayMaxSize,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
+
+import { FEEDBACK_TAGS, MEET_AGAIN_CHOICES } from './feedback.constants';
+import type { FeedbackTag, MeetAgainChoice } from './feedback.constants';
 
 export class CreateDateRequestDto {
   @IsDateString()
@@ -32,11 +40,18 @@ export class FeedbackDto {
   @IsBoolean()
   attended: boolean;
 
-  @IsBoolean()
-  feltSafe: boolean;
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  vibeRating: number;
 
-  @IsBoolean()
-  wouldMeetAgain: boolean;
+  @IsEnum(MEET_AGAIN_CHOICES)
+  wouldMeetAgain: MeetAgainChoice;
+
+  @IsArray()
+  @ArrayMaxSize(FEEDBACK_TAGS.length)
+  @IsEnum(FEEDBACK_TAGS, { each: true })
+  tags: FeedbackTag[];
 
   @IsOptional()
   @IsString()

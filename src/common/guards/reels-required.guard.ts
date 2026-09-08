@@ -52,6 +52,7 @@ export class ReelRequiredGuard implements CanActivate {
 
     const user = req.user;
     if (!user) return false;
+    if (user.role === 'ADMIN') return true;
 
     if (this.verifiedOnboardingRoutes.has(fullPath)) {
       return user.isEmailVerified;

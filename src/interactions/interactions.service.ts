@@ -15,11 +15,16 @@ import { Reel } from '../reels/reel.entity';
 import { User } from '../users/user.entity';
 
 import { Cooldown } from './cooldown.entity';
+import type { FeedbackTag, MeetAgainChoice } from './feedback.constants';
 import { GooglePlacesService } from './google-places.service';
 import { InteractionRequest } from './interaction.entity';
 import { MeetupFeedback } from './meetup-feedback.entity';
 import { SafetyReport } from './safety-report.entity';
-import { buildCoffeeWindow, isWeekend } from './time-rules';
+import {
+  assertTodayAndInAvailability,
+  buildCoffeeWindow,
+  isWeekend,
+} from './time-rules';
 import { UserBlock } from './user-block.entity';
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -154,8 +159,14 @@ export class InteractionsService {
       .take(100)
       .getMany();
     for (const match of matches) {
-      match.reminderSentAt = new Date();
-      await this.reqRepo.save(match);
+      const claim = await this.reqRepo
+        .createQueryBuilder()
+        .update(InteractionRequest)
+        .set({ reminderSentAt: new Date() })
+        .where('id = :id', { id: match.id })
+        .andWhere('reminderSentAt IS NULL')
+        .execute();
+      if (claim.affected !== 1) continue;
       const url = `/requests/${match.id}`;
       void Promise.all([
         this.notifications.send(
@@ -184,8 +195,14 @@ export class InteractionsService {
       .take(100)
       .getMany();
     for (const meetup of completedMeetups) {
-      meetup.feedbackReminderSentAt = new Date();
-      await this.reqRepo.save(meetup);
+      const claim = await this.reqRepo
+        .createQueryBuilder()
+        .update(InteractionRequest)
+        .set({ feedbackReminderSentAt: new Date() })
+        .where('id = :id', { id: meetup.id })
+        .andWhere('feedbackReminderSentAt IS NULL')
+        .execute();
+      if (claim.affected !== 1) continue;
       const url = `/feedback/${meetup.id}`;
       void Promise.all([
         this.notifications.send(
@@ -231,6 +248,19 @@ export class InteractionsService {
       : actor.weekdaysAvailability;
     if (!slot) throw new BadRequestException('Set availability first.');
     const { end } = buildCoffeeWindow(start, slot, timeZone);
+    const recipientSlot = isWeekend(start, timeZone)
+      ? recipient.weekendsAvailability
+      : recipient.weekdaysAvailability;
+    if (!recipientSlot) {
+      throw new BadRequestException('This person has not set availability.');
+    }
+    try {
+      assertTodayAndInAvailability(start, recipientSlot, timeZone);
+    } catch {
+      throw new BadRequestException(
+        "Selected time is outside this person's availability.",
+      );
+    }
 
     await this.enforceQuota(actor.id);
     await this.ensureNoBlockOrCooldown(actor, recipient);
@@ -356,11 +386,11 @@ export class InteractionsService {
         );
       }
       if (request.requester.id === userId) {
-        if (request.requesterDecision)
+        if (request.requesterDecision && request.requesterDecision !== decision)
           throw new BadRequestException('Your decision is already saved.');
         request.requesterDecision = decision;
       } else {
-        if (request.recipientDecision)
+        if (request.recipientDecision && request.recipientDecision !== decision)
           throw new BadRequestException('Your decision is already saved.');
         request.recipientDecision = decision;
       }
@@ -386,6 +416,7 @@ export class InteractionsService {
           }),
         );
         return {
+          kind: 'response' as const,
           response: {
             message: 'Decision saved privately.',
             status: request.status,
@@ -400,19 +431,22 @@ export class InteractionsService {
       ) {
         await requests.save(request);
         return {
+          kind: 'response' as const,
           response: {
             message: 'Decision saved privately.',
             status: request.status,
           },
         };
       }
+      await requests.save(request);
+
       if (
         request.requester.lat == null ||
         request.requester.lng == null ||
         request.recipient.lat == null ||
         request.recipient.lng == null
       ) {
-        throw new BadRequestException('Both users need a current location.');
+        return { kind: 'missing-location' as const };
       }
       const earliest = Math.max(
         request.windowStartAt.getTime(),
@@ -425,6 +459,7 @@ export class InteractionsService {
         request.status = 'EXPIRED';
         await requests.save(request);
         return {
+          kind: 'response' as const,
           response: {
             message: 'There is no future time left in this coffee window.',
             status: request.status,
@@ -435,49 +470,86 @@ export class InteractionsService {
         lat: (request.requester.lat + request.recipient.lat) / 2,
         lng: (request.requester.lng + request.recipient.lng) / 2,
       };
-      const { chosen } = await this.places.pickOneRestaurant(
-        midpoint.lat,
-        midpoint.lng,
-        lockedStart.toISOString(),
-      );
-      request.status = 'MATCHED';
-      request.acceptedStartAt = lockedStart;
-      request.acceptedDurationSec = 3600;
-      request.acceptedGooglePlaceId = chosen.googlePlaceId;
-      request.acceptedRestaurantName = chosen.name;
-      request.acceptedRestaurantAddress = chosen.address;
-      request.acceptedRestaurantLat = chosen.lat;
-      request.acceptedRestaurantLng = chosen.lng;
-      await requests.save(request);
       return {
-        response: { message: "It's a match.", status: request.status },
-        match: {
-          requestId: request.id,
-          requesterId: request.requester.id,
-          recipientId: request.recipient.id,
-          placeName: chosen.name,
-        },
+        kind: 'finalize' as const,
+        midpoint,
+        lockedStart,
       };
     });
 
-    if (result.match) {
-      const url = `/requests/${result.match.requestId}`;
+    if (result.kind === 'response') return result.response;
+    if (result.kind === 'missing-location') {
+      throw new BadRequestException('Both users need a current location.');
+    }
+
+    // The user's YES is committed before the provider call. If Places is
+    // temporarily unavailable, retrying the same YES safely retries matching.
+    const { chosen } = await this.places.pickOneRestaurant(
+      result.midpoint.lat,
+      result.midpoint.lng,
+      result.lockedStart.toISOString(),
+    );
+    const finalized = await this.reqRepo.manager.transaction(
+      async (manager) => {
+        const requests = manager.getRepository(InteractionRequest);
+        const request = await requests.findOne({
+          where: { id: requestId },
+          relations: ['requester', 'recipient'],
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!request) throw new NotFoundException('Request not found.');
+        if (request.status === 'MATCHED') {
+          return {
+            response: { message: "It's a match.", status: request.status },
+          };
+        }
+        if (
+          request.status !== 'AWAITING_DECISIONS' ||
+          request.requesterDecision !== 'YES' ||
+          request.recipientDecision !== 'YES'
+        ) {
+          throw new BadRequestException('Match is no longer available.');
+        }
+
+        request.status = 'MATCHED';
+        request.acceptedStartAt = result.lockedStart;
+        request.acceptedDurationSec = 3600;
+        request.acceptedGooglePlaceId = chosen.googlePlaceId;
+        request.acceptedRestaurantName = chosen.name;
+        request.acceptedRestaurantAddress = chosen.address;
+        request.acceptedRestaurantLat = chosen.lat;
+        request.acceptedRestaurantLng = chosen.lng;
+        await requests.save(request);
+        return {
+          response: { message: "It's a match.", status: request.status },
+          match: {
+            requestId: request.id,
+            requesterId: request.requester.id,
+            recipientId: request.recipient.id,
+            placeName: chosen.name,
+          },
+        };
+      },
+    );
+
+    if (finalized.match) {
+      const url = `/requests/${finalized.match.requestId}`;
       void Promise.all([
         this.notifications.send(
-          result.match.requesterId,
+          finalized.match.requesterId,
           "It's a match",
-          `Meet at ${result.match.placeName}.`,
+          `Meet at ${finalized.match.placeName}.`,
           url,
         ),
         this.notifications.send(
-          result.match.recipientId,
+          finalized.match.recipientId,
           "It's a match",
-          `Meet at ${result.match.placeName}.`,
+          `Meet at ${finalized.match.placeName}.`,
           url,
         ),
       ]);
     }
-    return result.response;
+    return finalized.response;
   }
 
   private async load(id: string) {
@@ -574,13 +646,39 @@ export class InteractionsService {
     };
   }
 
+  async cancelMeetup(userId: string, requestId: string) {
+    const request = await this.load(requestId);
+    this.ensureParty(userId, request);
+    if (
+      request.status !== 'MATCHED' ||
+      !request.acceptedStartAt ||
+      request.acceptedStartAt.getTime() <= Date.now()
+    ) {
+      throw new BadRequestException(
+        'Only an upcoming confirmed meetup can be cancelled.',
+      );
+    }
+    request.status = 'CANCELLED';
+    await this.reqRepo.save(request);
+    const other =
+      request.requester.id === userId ? request.recipient : request.requester;
+    void this.notifications.send(
+      other.id,
+      'Meetup cancelled',
+      'Your upcoming coffee meetup was cancelled.',
+      `/requests/${request.id}`,
+    );
+    return { message: 'Meetup cancelled.', status: request.status };
+  }
+
   async submitFeedback(
     userId: string,
     requestId: string,
     body: {
       attended: boolean;
-      feltSafe: boolean;
-      wouldMeetAgain: boolean;
+      vibeRating: number;
+      wouldMeetAgain: MeetAgainChoice;
+      tags: FeedbackTag[];
       notes?: string;
     },
   ) {
@@ -606,6 +704,7 @@ export class InteractionsService {
         request,
         author: { id: userId } as User,
         ...body,
+        feltSafe: !body.tags.includes('SAFETY_CONCERN'),
         notes: body.notes?.trim() || null,
       }),
     );
@@ -615,7 +714,7 @@ export class InteractionsService {
         : request.requester.id;
     return {
       message: 'Feedback submitted.',
-      requiresSafetyAction: !body.feltSafe,
+      requiresSafetyAction: body.tags.includes('SAFETY_CONCERN'),
       otherUserId,
     };
   }

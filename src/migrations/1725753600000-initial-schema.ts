@@ -141,7 +141,7 @@ export class InitialSchema1725753600000 implements MigrationInterface {
     `);
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS meetup_feedback (
-        id varchar(36) NOT NULL, attended tinyint NOT NULL, feltSafe tinyint NOT NULL, wouldMeetAgain tinyint NOT NULL, notes varchar(1000) NULL,
+        id varchar(36) NOT NULL, attended tinyint NOT NULL, feltSafe tinyint NOT NULL, vibeRating int NOT NULL, wouldMeetAgain varchar(5) NOT NULL, tags json NOT NULL, notes varchar(1000) NULL,
         createdAt datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), requestId varchar(36) NULL, authorId varchar(36) NULL,
         UNIQUE INDEX IDX_feedback_request_author (requestId, authorId), PRIMARY KEY (id),
         CONSTRAINT FK_feedback_request FOREIGN KEY (requestId) REFERENCES date_requests(id) ON DELETE CASCADE,

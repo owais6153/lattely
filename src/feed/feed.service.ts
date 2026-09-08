@@ -104,12 +104,22 @@ export class FeedService {
       .take(limit + 1);
 
     if (opts.cursor) {
-      let decoded: { createdAt: string; id: string };
+      let decoded: unknown;
       try {
         decoded = JSON.parse(
           Buffer.from(opts.cursor, 'base64url').toString('utf8'),
-        ) as typeof decoded;
+        ) as unknown;
       } catch {
+        throw new BadRequestException('Invalid feed cursor.');
+      }
+      if (
+        typeof decoded !== 'object' ||
+        decoded === null ||
+        !('createdAt' in decoded) ||
+        !('id' in decoded) ||
+        typeof decoded.createdAt !== 'string' ||
+        typeof decoded.id !== 'string'
+      ) {
         throw new BadRequestException('Invalid feed cursor.');
       }
       const createdAt = new Date(decoded.createdAt);

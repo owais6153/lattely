@@ -60,5 +60,13 @@ describe('date availability time zones', () => {
         new Date('2026-09-08T06:00:00.000Z'),
       ),
     ).toThrow('at least 30 minutes');
+    expect(() =>
+      buildCoffeeWindow(
+        new Date('2026-09-08T11:00:00.000Z'),
+        'MORNING',
+        'UTC',
+        new Date('2026-09-08T06:00:00.000Z'),
+      ),
+    ).toThrow('fit within the selected availability');
   });
 });

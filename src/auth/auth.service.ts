@@ -126,10 +126,15 @@ export class AuthService {
 
     await this.otp.verify(user.id, 'VERIFY_EMAIL', code);
     const updated = await this.users.markEmailVerified(user.id);
+    if (!updated) throw new BadRequestException('User not found.');
+    const accessToken = this.signAccess(updated);
+    const refreshToken = await this.refreshTokens.issue(updated);
 
     return {
       message: 'Email verified. Review permissions to continue.',
       user: updated,
+      accessToken,
+      refreshToken,
     };
   }
 
@@ -140,6 +145,12 @@ export class AuthService {
 
     const ok = await this.verifyPassword(password, u.passwordHash);
     if (!ok) throw new UnauthorizedException('Invalid credentials.');
+    if (!u.isEmailVerified) {
+      throw new UnauthorizedException({
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Verify your email before signing in.',
+      });
+    }
 
     const safeUser = await this.users.findById(u.id);
     const accessToken = this.signAccess(u);

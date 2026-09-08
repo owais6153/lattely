@@ -9,6 +9,7 @@ import {
 
 import { User } from '../users/user.entity';
 
+import type { FeedbackTag, MeetAgainChoice } from './feedback.constants';
 import { InteractionRequest } from './interaction.entity';
 
 @Entity('meetup_feedback')
@@ -29,8 +30,14 @@ export class MeetupFeedback {
   @Column({ type: 'boolean' })
   feltSafe: boolean;
 
-  @Column({ type: 'boolean' })
-  wouldMeetAgain: boolean;
+  @Column({ type: 'int' })
+  vibeRating: number;
+
+  @Column({ type: 'varchar', length: 5 })
+  wouldMeetAgain: MeetAgainChoice;
+
+  @Column({ type: 'json' })
+  tags: FeedbackTag[];
 
   @Column({ type: 'varchar', length: 1000, nullable: true })
   notes: string | null;

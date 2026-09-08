@@ -12,7 +12,8 @@ Last reviewed: 2026-09-08.
 ## Deployment constraints
 
 - Reels use local filesystem storage. A single API replica must mount persistent backup-capable storage at `/app/public/uploads/reels`. Multiple replicas require shared storage or a future object-storage adapter/CDN.
-- Expo push delivery is implemented, but the EAS project plus APNs/FCM credentials must be configured before device delivery works. Analytics and crash reporting remain deployment choices.
+- Expo push delivery is implemented, but an Expo account owner must run `eas login` and `eas project:init`, then configure APNs/FCM credentials before device delivery works. Missing project identity is warned in development and surfaced as an error in production instead of failing silently. Analytics and crash reporting remain deployment choices.
+- Location coordinates are validated for range but are still trusted from the authenticated client. Server-side attestation or anti-spoofing remains a post-MVP hardening item.
 - Web refresh tokens use browser local storage. The native iOS/Android apps use SecureStore and are the production targets.
 
 ## Test scope

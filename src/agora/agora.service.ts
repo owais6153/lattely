@@ -12,10 +12,16 @@ export class AgoraService {
     return appId;
   }
 
-  generateRtcToken(channelName: string, uid: number) {
+  generateRtcToken(channelName: string, uid: number, ttlSeconds?: number) {
     const appId = this.getAppId();
     const appCert = this.cfg.get<string>('AGORA_APP_CERT');
-    const ttl = Number(this.cfg.get<string>('AGORA_TOKEN_TTL_SEC') || '120');
+    const configuredTtl = Number(
+      this.cfg.get<string>('AGORA_TOKEN_TTL_SEC') || '65',
+    );
+    const ttl = Math.max(
+      1,
+      Math.min(ttlSeconds ?? configuredTtl, configuredTtl),
+    );
 
     if (!appCert) throw new BadRequestException('Agora credentials missing.');
 

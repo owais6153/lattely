@@ -7,11 +7,15 @@ describe('ReelRequiredGuard onboarding routes', () => {
   const reflector = { getAllAndOverride: jest.fn(() => false) } as unknown as Reflector;
   const guard = new ReelRequiredGuard(reflector);
 
-  function context(isEmailVerified: boolean, reelUploaded = false) {
+  function context(
+    isEmailVerified: boolean,
+    reelUploaded = false,
+    role = 'USER',
+  ) {
     const request = {
       baseUrl: '',
       route: { path: '/users/location' },
-      user: { isEmailVerified, reelUploaded },
+      user: { isEmailVerified, reelUploaded, role },
     };
     return {
       getHandler: () => ({}),
@@ -26,5 +30,9 @@ describe('ReelRequiredGuard onboarding routes', () => {
 
   it('keeps pre-reel onboarding unavailable until email is verified', () => {
     expect(guard.canActivate(context(false))).toBe(false);
+  });
+
+  it('allows administrators to use moderation without a vibe', () => {
+    expect(guard.canActivate(context(true, false, 'ADMIN'))).toBe(true);
   });
 });

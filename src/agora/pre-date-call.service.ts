@@ -74,12 +74,15 @@ export class PreDateCallService {
       throw new BadRequestException('The 60-second call has ended.');
     }
     const uid = req.requester.id === userId ? 1 : 2;
+    const remainingTtl = call.endsAt
+      ? Math.ceil((call.endsAt.getTime() - Date.now()) / 1000) + 5
+      : undefined;
 
     return {
       appId: this.agora.getAppId(),
       channelName: call.channelName,
       uid,
-      token: this.agora.generateRtcToken(call.channelName, uid),
+      token: this.agora.generateRtcToken(call.channelName, uid, remainingTtl),
       durationSec: 60,
       startedAt: call.startedAt,
       endsAt: call.endsAt,
@@ -125,10 +128,13 @@ export class PreDateCallService {
     this.ensureParty(userId, req);
 
     const call = await this.ensureCreatedForConfirmedRequest(requestId);
-
+    if (!call.endsAt || call.endsAt.getTime() > Date.now()) {
+      throw new BadRequestException(
+        'The call cannot be completed before its 60-second deadline.',
+      );
+    }
     call.status = 'COMPLETED';
-    call.completedAt =
-      call.endsAt && call.endsAt < new Date() ? call.endsAt : new Date();
+    call.completedAt = call.endsAt;
     await this.repo.save(call);
 
     return { status: call.status, completedAt: call.completedAt };

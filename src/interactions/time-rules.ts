@@ -8,6 +8,7 @@ function localParts(date: Date, timeZone?: string) {
       day: date.getDate(),
       weekday: date.getDay(),
       hour: date.getHours(),
+      minute: date.getMinutes(),
     };
   }
 
@@ -19,6 +20,7 @@ function localParts(date: Date, timeZone?: string) {
       day: 'numeric',
       weekday: 'short',
       hour: 'numeric',
+      minute: 'numeric',
       hourCycle: 'h23',
     }).formatToParts(date);
     const value = (type: Intl.DateTimeFormatPartTypes) =>
@@ -38,6 +40,7 @@ function localParts(date: Date, timeZone?: string) {
       day: Number(value('day')),
       weekday: weekdays[value('weekday')] ?? 0,
       hour: Number(value('hour')),
+      minute: Number(value('minute')),
     };
   } catch {
     throw new BadRequestException('Invalid timeZone.');
@@ -116,6 +119,14 @@ export function buildCoffeeWindow(
   ) {
     throw new BadRequestException(
       'The two-hour window must remain within today.',
+    );
+  }
+  const endMinutes = endParts.hour * 60 + endParts.minute;
+  const availabilityEnd =
+    availabilitySlot === 'MORNING' ? MORNING_END * 60 : EVENING_END * 60;
+  if (endMinutes > availabilityEnd) {
+    throw new BadRequestException(
+      'The two-hour window must fit within the selected availability period.',
     );
   }
   return { start, end };
