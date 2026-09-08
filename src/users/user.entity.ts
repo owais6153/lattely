@@ -51,8 +51,8 @@ export class User {
   @Column({ type: 'varchar', length: 60 })
   lastName: string;
 
-  @Column({ type: 'date' })
-  birthDate: string;
+  @Column({ type: 'date', nullable: true })
+  birthDate: string | null;
 
   // Step 2: location (nullable until user completes it)
   @Column({ type: 'varchar', length: 300, nullable: true })

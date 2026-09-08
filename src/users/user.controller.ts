@@ -4,6 +4,7 @@ import type { AuthenticatedRequest } from '../common/types/auth.types';
 
 import {
   UpdateLocationDto,
+  UpdateBirthDateDto,
   UpdatePreferencesDto,
   UpdateProfileDto,
 } from './users.dto';
@@ -12,6 +13,14 @@ import { UsersService } from './users.service';
 @Controller('users')
 export class UsersController {
   constructor(private readonly users: UsersService) {}
+
+  @Patch('birth-date')
+  updateBirthDate(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: UpdateBirthDateDto,
+  ) {
+    return this.users.updateBirthDate(req.user.id, body.birthDate);
+  }
 
   @Patch('location')
   async updateLocation(

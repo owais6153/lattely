@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { assertAdultBirthDate } from './age-rules';
 import { User } from './user.entity';
 import type {
   UpdateLocationDto,
@@ -87,6 +88,17 @@ export class UsersService {
 
   async markPermissionsCompleted(userId: string) {
     await this.repo.update({ id: userId }, { permissionsCompleted: true });
+    return this.findById(userId);
+  }
+
+  async updateBirthDate(userId: string, birthDate: string) {
+    assertAdultBirthDate(birthDate);
+    const user = await this.findById(userId);
+    if (!user) throw new BadRequestException('User not found.');
+    if (user.birthDate) {
+      throw new BadRequestException('Date of birth is already confirmed.');
+    }
+    await this.repo.update({ id: userId }, { birthDate });
     return this.findById(userId);
   }
 

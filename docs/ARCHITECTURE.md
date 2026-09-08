@@ -15,6 +15,6 @@ The backend is a modular NestJS HTTP API. Controllers validate and authorize cal
 | `meetup_feedback`, `safety_reports` | Post-meet safety and moderation |
 | `push_tokens` | Per-device Expo destinations |
 
-Schema synchronization is disabled in production and `src/migrations` is authoritative. The reconciliation migration normalizes legacy nullability and removes the retired `date_proposals` table.
+Schema synchronization is disabled in production and `src/migrations` is authoritative. Reconciliation migrations normalize request nullability, remove the retired `date_proposals` table, and clear the former fabricated DOB sentinel so legacy users must supply their actual birth date.
 
 Reel URLs are relative `public/uploads/reels/...` paths. A single API replica needs a durable mounted volume; multiple replicas require shared/object storage.

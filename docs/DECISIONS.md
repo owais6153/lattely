@@ -10,13 +10,17 @@ Six-digit codes use an independent keyed HMAC, constant-time comparison, resend 
 
 ## Call-gated meetup snapshots
 
-Google Places is called only after both post-call decisions are Yes. Decisions commit before the external call; an identical Yes retry can safely retry venue selection after a transient provider failure. The selected venue is stored with the confirmed meetup, using restaurant/cafe categories and an expanded-radius fallback.
+Google Places is called only after both post-call decisions are Yes. Decisions commit before the external call; identical Yes retries are idempotent, and the scheduler retries venue selection after transient provider failures until the request expires. The selected venue is stored with the confirmed meetup, using restaurant/cafe categories and an expanded-radius fallback.
 
 Only parties to recipient-confirmed requests obtain Agora tokens. Channels derive from request IDs; requester and recipient use deterministic UIDs 1 and 2. The client starts the server clock when it observes the second participant, the server stores the 60-second deadline, credentials never extend beyond the deadline grace period, and the client automatically leaves at zero.
 
 ## Replica-safe scheduled reminders
 
 Each scheduler may scan eligible rows, but a conditional database update atomically claims each reminder. Only the winning replica sends the notification.
+
+## Meetup cancellation and rescheduling
+
+Cancelling a future confirmed meetup notifies the other participant but does not create a cooldown. This intentionally permits the pair to arrange a replacement request; blocking, declining, or a post-call No still creates the applicable exclusion.
 
 ## Local persistent reel storage
 

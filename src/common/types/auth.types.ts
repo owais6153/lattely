@@ -13,6 +13,7 @@ export type AuthenticatedUser = {
   email: string;
   role: Role;
   isEmailVerified: boolean;
+  birthDate: string | null;
   reelUploaded: boolean;
   gender: string;
   firstName: string;

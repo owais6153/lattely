@@ -2,7 +2,7 @@
 
 ## Authentication and onboarding
 
-The auth API covers registration, login, email verification, resend, recovery, rotating refresh sessions, logout, and account deletion. Registration enforces 18+ from birth date. OTPs use keyed HMAC hashes, constant-time comparison, five-attempt invalidation, and resend throttling.
+The auth API covers registration, login, email verification, resend, recovery, rotating refresh sessions, logout, and account deletion. Registration and `PATCH /users/birth-date` enforce 18+ from a real calendar date; legacy accounts without one are kept out of discovery until they provide it. OTPs use keyed HMAC hashes, constant-time comparison, five-attempt invalidation, and resend throttling.
 
 `PATCH /users/permissions`, `/users/profile`, `/users/location`, and `/users/preferences` complete onboarding and support profile edits. Reel upload/read/replace/delete supports one validated 5–60 second MP4/MOV/WebM vibe. Stored file extensions derive from MIME type and Docker uses system ffprobe on every CPU architecture.
 
@@ -14,7 +14,7 @@ The auth API covers registration, login, email verification, resend, recovery, r
 
 `POST /reels/:reelId/react/coffee` creates a future two-hour window today with a 30-minute buffer that fits both users' selected availability period. Inbox, outbox, and detail expose state; `POST /requests/:id/respond` confirms or declines. Hour/day quotas run before any paid place lookup and a minute scheduler expires stale windows.
 
-Confirmation enables a request-specific 60-second Agora call whose clock begins when the second participant connects. `POST /requests/:id/decision` records private Yes/No answers afterward. Either No starts a mutual 30-day cooldown; both Yes commits both decisions before the external venue lookup, then locks the time and stores a nearby restaurant/cafe/coffee-shop snapshot after an expanded-radius fallback search. `POST /requests/:id/cancel` cancels a future locked meetup and notifies the other person.
+Confirmation enables a request-specific 60-second Agora call whose clock begins when the second participant connects. `POST /requests/:id/decision` records private Yes/No answers afterward. Either No starts a mutual 30-day cooldown; both Yes commits both decisions before the external venue lookup, then locks the time and stores a nearby restaurant/cafe/coffee-shop snapshot after an expanded-radius fallback search. The scheduler retries mutual-Yes venue failures and expires them at the request deadline. `POST /requests/:id/cancel` cancels a future locked meetup and notifies the other person.
 
 ## Feedback, safety, and notifications
 

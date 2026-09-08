@@ -1,4 +1,5 @@
 import {
+  IsDateString,
   IsEnum,
   IsNumber,
   IsOptional,
@@ -24,6 +25,11 @@ export class UpdateProfileDto {
 
   @IsEnum(['MALE', 'FEMALE', 'NON_BINARY'])
   gender: Gender;
+}
+
+export class UpdateBirthDateDto {
+  @IsDateString({ strict: true })
+  birthDate: string;
 }
 
 export class UpdateLocationDto {

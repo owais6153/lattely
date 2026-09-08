@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-Node.js 22, npm, MySQL 8, SMTP, Google Places, Agora, and a writable `public/uploads/reels` directory.
+Node.js 22, npm, MySQL 8, SMTP, Google Places, Agora, ffmpeg/ffprobe, and a writable `public/uploads/reels` directory. Install ffmpeg so `ffprobe` is on `PATH`, or set `FFPROBE_PATH` to the executable; startup logs a warning when it cannot be resolved.
 
 ## Setup
 

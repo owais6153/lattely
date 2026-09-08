@@ -5,7 +5,9 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -15,18 +17,34 @@ import { UsersService } from '../users/users.service';
 
 import { Reel } from './reel.entity';
 import { UploadReelMetaDto } from './reels.dto';
-import { getVideoDurationSec } from './video-metadata';
+import {
+  getFfprobePath,
+  getVideoDurationSec,
+  verifyFfprobeAvailable,
+} from './video-metadata';
 
 const REEL_STORAGE_ROOT = resolve('public/uploads/reels');
 
 @Injectable()
-export class ReelsService {
+export class ReelsService implements OnModuleInit {
+  private readonly logger = new Logger(ReelsService.name);
+
   constructor(
     @InjectRepository(Reel) private readonly repo: Repository<Reel>,
     @InjectRepository(InteractionRequest)
     private readonly requestsRepo: Repository<InteractionRequest>,
     private readonly users: UsersService,
   ) {}
+
+  async onModuleInit() {
+    try {
+      await verifyFfprobeAvailable();
+    } catch {
+      this.logger.warn(
+        `ffprobe is unavailable at "${getFfprobePath()}". Reel uploads will fail until FFPROBE_PATH or PATH is configured.`,
+      );
+    }
+  }
 
   private async safeDelete(path?: string) {
     if (!path) return;

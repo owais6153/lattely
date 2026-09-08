@@ -2,12 +2,13 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, MoreThanOrEqual, Repository } from 'typeorm';
+import { In, MoreThan, MoreThanOrEqual, Repository } from 'typeorm';
 
 import { PreDateCall } from '../agora/pre-date-call.entity';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -31,6 +32,8 @@ const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class InteractionsService {
+  private readonly logger = new Logger(InteractionsService.name);
+
   constructor(
     @InjectRepository(InteractionRequest)
     private readonly reqRepo: Repository<InteractionRequest>,
@@ -44,6 +47,8 @@ export class InteractionsService {
     private readonly reportRepo: Repository<SafetyReport>,
     @InjectRepository(MeetupFeedback)
     private readonly feedbackRepo: Repository<MeetupFeedback>,
+    @InjectRepository(PreDateCall)
+    private readonly callRepo: Repository<PreDateCall>,
     private readonly config: ConfigService,
     private readonly places: GooglePlacesService,
     private readonly notifications: NotificationsService,
@@ -125,8 +130,24 @@ export class InteractionsService {
   }
 
   private async expireIfNeeded(request: InteractionRequest) {
+    if (request.status === 'CALL_READY') {
+      const call = await this.callRepo.findOne({
+        where: { request: { id: request.id } },
+      });
+      if (call?.endsAt && call.endsAt.getTime() <= Date.now()) {
+        call.status = 'COMPLETED';
+        call.completedAt = call.endsAt;
+        request.status = 'AWAITING_DECISIONS';
+        await Promise.all([
+          this.callRepo.save(call),
+          this.reqRepo.save(request),
+        ]);
+      }
+    }
     if (
-      ['PENDING', 'CALL_READY'].includes(request.status) &&
+      ['PENDING', 'CALL_READY', 'AWAITING_DECISIONS'].includes(
+        request.status,
+      ) &&
       request.expiresAt.getTime() <= Date.now()
     ) {
       request.status = 'EXPIRED';
@@ -141,10 +162,33 @@ export class InteractionsService {
       .update(InteractionRequest)
       .set({ status: 'EXPIRED' })
       .where('status IN (:...statuses)', {
-        statuses: ['PENDING', 'CALL_READY'],
+        statuses: ['PENDING', 'CALL_READY', 'AWAITING_DECISIONS'],
       })
       .andWhere('expiresAt <= :now', { now: new Date() })
       .execute();
+
+    const venueRetries = await this.reqRepo.find({
+      where: {
+        status: 'AWAITING_DECISIONS',
+        requesterDecision: 'YES',
+        recipientDecision: 'YES',
+        expiresAt: MoreThan(new Date()),
+      },
+      relations: ['requester'],
+      take: 10,
+    });
+    await Promise.all(
+      venueRetries.map(async (request) => {
+        try {
+          await this.decide(request.requester.id, request.id, 'YES');
+        } catch (error) {
+          this.logger.warn(
+            `Venue retry failed for request ${request.id}: ${error instanceof Error ? error.message : 'unknown error'}`,
+          );
+        }
+      }),
+    );
+
     const reminderCutoff = new Date(Date.now() + 30 * 60 * 1000);
     const matches = await this.reqRepo
       .createQueryBuilder('request')

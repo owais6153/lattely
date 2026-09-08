@@ -11,6 +11,7 @@ import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 
 import { MailService } from '../mail/mail.service';
+import { assertAdultBirthDate } from '../users/age-rules';
 import { UsersService } from '../users/users.service';
 
 import { RegisterDto } from './auth.dto';
@@ -59,12 +60,7 @@ export class AuthService {
     if (!firstName || !lastName)
       throw new BadRequestException('First and last name are required.');
 
-    const birthDate = new Date(`${dto.birthDate}T00:00:00.000Z`);
-    const adultCutoff = new Date();
-    adultCutoff.setUTCFullYear(adultCutoff.getUTCFullYear() - 18);
-    if (Number.isNaN(birthDate.getTime()) || birthDate > adultCutoff) {
-      throw new BadRequestException('You must be at least 18 years old.');
-    }
+    assertAdultBirthDate(dto.birthDate);
 
     const existing = await this.users.findByEmail(email);
     if (existing) throw new BadRequestException('Email already in use.');

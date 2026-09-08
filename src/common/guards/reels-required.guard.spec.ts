@@ -15,7 +15,12 @@ describe('ReelRequiredGuard onboarding routes', () => {
     const request = {
       baseUrl: '',
       route: { path: '/users/location' },
-      user: { isEmailVerified, reelUploaded, role },
+      user: {
+        isEmailVerified,
+        birthDate: '2000-01-01',
+        reelUploaded,
+        role,
+      },
     };
     return {
       getHandler: () => ({}),
@@ -34,5 +39,14 @@ describe('ReelRequiredGuard onboarding routes', () => {
 
   it('allows administrators to use moderation without a vibe', () => {
     expect(guard.canActivate(context(true, false, 'ADMIN'))).toBe(true);
+  });
+
+  it('blocks a legacy user until a real birth date is collected', () => {
+    const legacyContext = context(true);
+    const request = legacyContext.switchToHttp().getRequest();
+    request.user.birthDate = null;
+    expect(guard.canActivate(legacyContext)).toBe(false);
+    request.route.path = '/users/birth-date';
+    expect(guard.canActivate(legacyContext)).toBe(true);
   });
 });
