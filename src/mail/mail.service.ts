@@ -1,16 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import nodemailer from 'nodemailer';
+import nodemailer, { type Transporter } from 'nodemailer';
 
 @Injectable()
 export class MailService {
-  private transporter: nodemailer.Transporter;
+  private transporter: Transporter;
 
   constructor(private readonly cfg: ConfigService) {
     this.transporter = nodemailer.createTransport({
       host: this.cfg.get<string>('MAIL_HOST'),
       port: Number(this.cfg.get<string>('MAIL_PORT')),
       secure: this.cfg.get<string>('MAIL_SECURE') === 'true',
+      connectionTimeout: Number(
+        this.cfg.get<string>('MAIL_CONNECTION_TIMEOUT_MS') || '10000',
+      ),
+      greetingTimeout: Number(
+        this.cfg.get<string>('MAIL_GREETING_TIMEOUT_MS') || '10000',
+      ),
+      socketTimeout: Number(
+        this.cfg.get<string>('MAIL_SOCKET_TIMEOUT_MS') || '20000',
+      ),
       auth: {
         user: this.cfg.get<string>('MAIL_USER'),
         pass: this.cfg.get<string>('MAIL_PASS'),

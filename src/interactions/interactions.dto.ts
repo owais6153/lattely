@@ -1,36 +1,66 @@
 import {
   IsDateString,
+  IsBoolean,
   IsEnum,
-  IsInt,
   IsOptional,
-  Max,
-  Min,
+  IsString,
+  MaxLength,
+  MinLength,
 } from 'class-validator';
 
 export class CreateDateRequestDto {
   @IsDateString()
-  proposedStartAt: string;
+  windowStartAt: string;
 
-  // 30 min to 4 hours, default 90 min
   @IsOptional()
-  @IsInt()
-  @Min(1800)
-  @Max(14400)
-  durationSec?: number;
+  @IsString()
+  @MaxLength(100)
+  timeZone?: string;
 }
 
 export class RespondDto {
-  @IsEnum(['ACCEPT', 'REJECT', 'COUNTER'])
-  action: 'ACCEPT' | 'REJECT' | 'COUNTER';
+  @IsEnum(['CONFIRM', 'DECLINE'])
+  action: 'CONFIRM' | 'DECLINE';
+}
 
-  // COUNTER requires new proposed time
-  @IsOptional()
-  @IsDateString()
-  proposedStartAt?: string;
+export class PostCallDecisionDto {
+  @IsEnum(['YES', 'NO'])
+  decision: 'YES' | 'NO';
+}
+
+export class FeedbackDto {
+  @IsBoolean()
+  attended: boolean;
+
+  @IsBoolean()
+  feltSafe: boolean;
+
+  @IsBoolean()
+  wouldMeetAgain: boolean;
 
   @IsOptional()
-  @IsInt()
-  @Min(1800)
-  @Max(14400)
-  durationSec?: number;
+  @IsString()
+  @MaxLength(1000)
+  notes?: string;
+}
+
+export class SafetyReportDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(40)
+  reason: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  details?: string;
+
+  @IsOptional()
+  @IsString()
+  requestId?: string;
+}
+
+export class ModerateReportDto {
+  @IsEnum(['REVIEWED', 'CLOSED'])
+  status: 'REVIEWED' | 'CLOSED';
 }

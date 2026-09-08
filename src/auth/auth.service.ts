@@ -1,3 +1,6 @@
+import { unlink } from 'fs/promises';
+import { resolve, sep } from 'path';
+
 import {
   BadRequestException,
   Injectable,
@@ -6,10 +9,15 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
-import { UsersService } from '../users/users.service';
+
 import { MailService } from '../mail/mail.service';
-import { OtpService } from './otp.service';
+import { UsersService } from '../users/users.service';
+
 import { RegisterDto } from './auth.dto';
+import { OtpService } from './otp.service';
+import { RefreshTokenService } from './refresh-token.service';
+
+const REEL_STORAGE_ROOT = resolve('public/uploads/reels');
 
 @Injectable()
 export class AuthService {
@@ -19,6 +27,7 @@ export class AuthService {
     private readonly users: UsersService,
     private readonly mail: MailService,
     private readonly otp: OtpService,
+    private readonly refreshTokens: RefreshTokenService,
   ) {}
 
   private async hashPassword(pw: string) {
@@ -29,8 +38,8 @@ export class AuthService {
     return bcrypt.compare(pw, hash);
   }
 
-  private accessTtlDays() {
-    return Number(this.cfg.get<string>('JWT_ACCESS_TTL_DAYS') || '30');
+  private accessTtlMinutes() {
+    return this.cfg.get<number>('JWT_ACCESS_TTL_MINUTES') ?? 15;
   }
 
   private signAccess(user: { id: string; email: string; role: string }) {
@@ -38,13 +47,24 @@ export class AuthService {
       { sub: user.id, email: user.email, role: user.role },
       {
         secret: this.cfg.get<string>('JWT_ACCESS_SECRET'),
-        expiresIn: `${this.accessTtlDays()}d`,
+        expiresIn: `${this.accessTtlMinutes()}m`,
       },
     );
   }
 
   async register(dto: RegisterDto) {
     const email = dto.email.toLowerCase();
+    const firstName = dto.firstName.trim();
+    const lastName = dto.lastName.trim();
+    if (!firstName || !lastName)
+      throw new BadRequestException('First and last name are required.');
+
+    const birthDate = new Date(`${dto.birthDate}T00:00:00.000Z`);
+    const adultCutoff = new Date();
+    adultCutoff.setUTCFullYear(adultCutoff.getUTCFullYear() - 18);
+    if (Number.isNaN(birthDate.getTime()) || birthDate > adultCutoff) {
+      throw new BadRequestException('You must be at least 18 years old.');
+    }
 
     const existing = await this.users.findByEmail(email);
     if (existing) throw new BadRequestException('Email already in use.');
@@ -55,9 +75,11 @@ export class AuthService {
       role: 'USER',
       isEmailVerified: false,
       reelUploaded: false,
+      permissionsCompleted: false,
       gender: dto.gender,
-      firstName: dto.firstName.trim(),
-      lastName: dto.lastName.trim(),
+      firstName,
+      lastName,
+      birthDate: dto.birthDate,
 
       address: null,
       lat: null,
@@ -69,18 +91,17 @@ export class AuthService {
       weekendsAvailability: null,
     });
 
-    const { code } = await this.otp.createOrReplace(
-      created as any,
-      'VERIFY_EMAIL',
-    );
+    const { code } = await this.otp.createOrReplace(created, 'VERIFY_EMAIL');
     await this.mail.sendOtpEmail(email, 'VERIFY_EMAIL', code);
 
-    const accessToken = this.signAccess(created as any);
+    const accessToken = this.signAccess(created);
+    const refreshToken = await this.refreshTokens.issue(created);
 
     return {
       message: 'Registered. OTP sent to email.',
       user: created,
       accessToken,
+      refreshToken,
     };
   }
 
@@ -92,10 +113,7 @@ export class AuthService {
       throw new BadRequestException('Email already verified.');
 
     await this.otp.enforceResendCooldown(user.id, 'VERIFY_EMAIL');
-    const { code } = await this.otp.createOrReplace(
-      user as any,
-      'VERIFY_EMAIL',
-    );
+    const { code } = await this.otp.createOrReplace(user, 'VERIFY_EMAIL');
     await this.mail.sendOtpEmail(email, 'VERIFY_EMAIL', code);
 
     return { message: 'OTP resent.' };
@@ -110,7 +128,7 @@ export class AuthService {
     const updated = await this.users.markEmailVerified(user.id);
 
     return {
-      message: 'Email verified. Please upload your vibe video to continue.',
+      message: 'Email verified. Review permissions to continue.',
       user: updated,
     };
   }
@@ -123,13 +141,15 @@ export class AuthService {
     const ok = await this.verifyPassword(password, u.passwordHash);
     if (!ok) throw new UnauthorizedException('Invalid credentials.');
 
-    const accessToken = this.signAccess(u);
     const safeUser = await this.users.findById(u.id);
+    const accessToken = this.signAccess(u);
+    const refreshToken = await this.refreshTokens.issue(u);
 
     return {
       message: 'Logged in.',
       user: safeUser,
       accessToken,
+      refreshToken,
     };
   }
 
@@ -140,10 +160,7 @@ export class AuthService {
     if (!user) return { message: 'If the email exists, an OTP has been sent.' };
 
     await this.otp.enforceResendCooldown(user.id, 'RESET_PASSWORD');
-    const { code } = await this.otp.createOrReplace(
-      user as any,
-      'RESET_PASSWORD',
-    );
+    const { code } = await this.otp.createOrReplace(user, 'RESET_PASSWORD');
     await this.mail.sendOtpEmail(email, 'RESET_PASSWORD', code);
 
     return { message: 'If the email exists, an OTP has been sent.' };
@@ -158,6 +175,7 @@ export class AuthService {
 
     const newHash = await this.hashPassword(newPassword);
     await this.users.updatePasswordHash(user.id, newHash);
+    await this.refreshTokens.revokeAll(user.id);
 
     return { message: 'Password updated. Please login again.' };
   }
@@ -166,5 +184,41 @@ export class AuthService {
     const user = await this.users.findById(userId);
     if (!user) throw new UnauthorizedException();
     return user;
+  }
+
+  async refresh(rawRefreshToken: string) {
+    const rotated = await this.refreshTokens.rotate(rawRefreshToken);
+    const user = await this.users.findById(rotated.user.id);
+    if (!user) throw new UnauthorizedException();
+
+    return {
+      message: 'Session refreshed.',
+      user,
+      accessToken: this.signAccess(rotated.user),
+      refreshToken: rotated.refreshToken,
+    };
+  }
+
+  async logout(rawRefreshToken: string) {
+    await this.refreshTokens.revoke(rawRefreshToken);
+    return { message: 'Logged out.' };
+  }
+
+  async deleteAccount(userId: string, password: string) {
+    const user = await this.users.findForAccountDeletion(userId);
+    if (!user || !(await this.verifyPassword(password, user.passwordHash))) {
+      throw new UnauthorizedException('Password is incorrect.');
+    }
+
+    const reelPath = user.reel?.videoUrl ? resolve(user.reel.videoUrl) : null;
+    if (reelPath && !reelPath.startsWith(`${REEL_STORAGE_ROOT}${sep}`)) {
+      throw new BadRequestException('Invalid stored reel path.');
+    }
+
+    await this.users.deleteById(userId);
+    // The resolved path was constrained to REEL_STORAGE_ROOT above.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
+    if (reelPath) await unlink(reelPath).catch(() => undefined);
+    return { message: 'Account permanently deleted.' };
   }
 }

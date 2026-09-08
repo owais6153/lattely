@@ -1,3 +1,6 @@
+import { unlink } from 'fs/promises';
+import { resolve, sep } from 'path';
+
 import {
   BadRequestException,
   ConflictException,
@@ -6,13 +9,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Reel } from './reel.entity';
-import { UsersService } from '../users/users.service';
-import { getVideoDurationSec } from './video-metadata';
-import { unlink } from 'fs/promises';
-import { resolve, sep } from 'path';
-import { UploadReelMetaDto } from './reels.dto';
+
 import { InteractionRequest } from '../interactions/interaction.entity';
+import { UsersService } from '../users/users.service';
+
+import { Reel } from './reel.entity';
+import { UploadReelMetaDto } from './reels.dto';
+import { getVideoDurationSec } from './video-metadata';
 
 const REEL_STORAGE_ROOT = resolve('public/uploads/reels');
 
@@ -27,8 +30,12 @@ export class ReelsService {
 
   private async safeDelete(path?: string) {
     if (!path) return;
+    const filePath = resolve(path);
+    if (!filePath.startsWith(`${REEL_STORAGE_ROOT}${sep}`)) return;
     try {
-      await unlink(path);
+      // The resolved path is constrained to REEL_STORAGE_ROOT above.
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
+      await unlink(filePath);
     } catch {
       // ignore
     }
@@ -75,7 +82,7 @@ export class ReelsService {
 
   async getCurrentReel(userId: string) {
     const reel = await this.repo.findOne({
-      where: { user: { id: userId } } as any,
+      where: { user: { id: userId } },
     });
     if (!reel) throw new NotFoundException('You do not have a reel.');
     return this.reelResponse(reel);
@@ -100,7 +107,7 @@ export class ReelsService {
     }
 
     const existing = await this.repo.findOne({
-      where: { user: { id: userId } } as any,
+      where: { user: { id: userId } },
       relations: ['user'],
     });
     if (existing) {
@@ -120,7 +127,7 @@ export class ReelsService {
 
     // Save reel
     const reel = this.repo.create({
-      user: user as any,
+      user,
       videoUrl,
       durationSec,
       lat,
@@ -152,7 +159,7 @@ export class ReelsService {
     if (!file) throw new BadRequestException('Video file is required.');
 
     const reel = await this.repo.findOne({
-      where: { user: { id: userId } } as any,
+      where: { user: { id: userId } },
     });
     if (!reel) {
       await this.safeDelete(file.path);
@@ -192,12 +199,12 @@ export class ReelsService {
 
   async deleteReel(userId: string) {
     const reel = await this.repo.findOne({
-      where: { user: { id: userId } } as any,
+      where: { user: { id: userId } },
     });
     if (!reel) throw new NotFoundException('You do not have a reel.');
 
     const requestCount = await this.requestsRepo.count({
-      where: { reel: { id: reel.id } } as any,
+      where: { reel: { id: reel.id } },
     });
     if (requestCount > 0) {
       throw new ConflictException(

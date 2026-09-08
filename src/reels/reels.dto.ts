@@ -1,23 +1,18 @@
-import { IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsNumber, IsOptional, Max, Min } from 'class-validator';
 
 export class UploadReelMetaDto {
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
+  @Min(-90)
+  @Max(90)
   lat?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
+  @Min(-180)
+  @Max(180)
   lng?: number;
-
-  // Address/location fields (optional)
-  @IsOptional()
-  @IsString()
-  city?: string;
-
-  @IsOptional()
-  @IsString()
-  country?: string;
-
-  @IsOptional()
-  tags?: string[];
 }

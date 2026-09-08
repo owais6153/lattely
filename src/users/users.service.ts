@@ -1,25 +1,36 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User } from './user.entity';
 
-const SAFE_USER_SELECT = [
-  'id',
-  'email',
-  'role',
-  'isEmailVerified',
-  'reelUploaded',
-  'gender',
-  'firstName',
-  'lastName',
-  'address',
-  'lat',
-  'lng',
-  'city',
-  'country',
-  'createdAt',
-  'updatedAt',
-] as const;
+import { User } from './user.entity';
+import type {
+  UpdateLocationDto,
+  UpdatePreferencesDto,
+  UpdateProfileDto,
+} from './users.dto';
+
+const SAFE_USER_SELECT = {
+  id: true,
+  email: true,
+  role: true,
+  isEmailVerified: true,
+  reelUploaded: true,
+  permissionsCompleted: true,
+  gender: true,
+  firstName: true,
+  lastName: true,
+  birthDate: true,
+  address: true,
+  lat: true,
+  lng: true,
+  city: true,
+  country: true,
+  interestedGender: true,
+  weekdaysAvailability: true,
+  weekendsAvailability: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 @Injectable()
 export class UsersService {
@@ -30,14 +41,14 @@ export class UsersService {
   async findByEmail(email: string) {
     return this.repo.findOne({
       where: { email },
-      select: SAFE_USER_SELECT as any,
+      select: SAFE_USER_SELECT,
     });
   }
 
   async findById(id: string) {
     return this.repo.findOne({
       where: { id },
-      select: SAFE_USER_SELECT as any,
+      select: SAFE_USER_SELECT,
     });
   }
 
@@ -45,21 +56,23 @@ export class UsersService {
   async findForAuthByEmail(email: string) {
     return this.repo.findOne({
       where: { email },
-      select: [
-        'id',
-        'email',
-        'passwordHash',
-        'role',
-        'isEmailVerified',
-        'reelUploaded',
-      ] as any,
+      select: {
+        id: true,
+        email: true,
+        passwordHash: true,
+        role: true,
+        isEmailVerified: true,
+        reelUploaded: true,
+      },
     });
   }
 
   async createUser(data: Partial<User>) {
     const u = this.repo.create(data);
     const saved = await this.repo.save(u);
-    return this.findById(saved.id);
+    const safeUser = await this.findById(saved.id);
+    if (!safeUser) throw new BadRequestException('Unable to create user.');
+    return safeUser;
   }
 
   async markEmailVerified(userId: string) {
@@ -72,14 +85,34 @@ export class UsersService {
     return this.findById(userId);
   }
 
+  async markPermissionsCompleted(userId: string) {
+    await this.repo.update({ id: userId }, { permissionsCompleted: true });
+    return this.findById(userId);
+  }
+
+  async findForAccountDeletion(id: string) {
+    return this.repo
+      .createQueryBuilder('user')
+      .addSelect('user.passwordHash')
+      .leftJoinAndSelect('user.reel', 'reel')
+      .where('user.id = :id', { id })
+      .getOne();
+  }
+
+  async deleteById(id: string) {
+    await this.repo.delete({ id });
+  }
+
   async updatePasswordHash(userId: string, passwordHash: string) {
     await this.repo.update({ id: userId }, { passwordHash });
   }
-  async updateLocation(userId: string, dto: any) {
+  async updateLocation(userId: string, dto: UpdateLocationDto) {
+    const address = dto.address.trim();
+    if (!address) throw new BadRequestException('Address is required.');
     await this.repo.update(
       { id: userId },
       {
-        address: dto.address.trim(),
+        address,
         lat: dto.lat,
         lng: dto.lng,
         city: dto.city?.trim() ?? null,
@@ -89,7 +122,19 @@ export class UsersService {
     return this.findById(userId);
   }
 
-  async updatePreferences(userId: string, dto: any) {
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const firstName = dto.firstName.trim();
+    const lastName = dto.lastName.trim();
+    if (!firstName || !lastName)
+      throw new BadRequestException('First and last name are required.');
+    await this.repo.update(
+      { id: userId },
+      { firstName, lastName, gender: dto.gender },
+    );
+    return this.findById(userId);
+  }
+
+  async updatePreferences(userId: string, dto: UpdatePreferencesDto) {
     await this.repo.update(
       { id: userId },
       {

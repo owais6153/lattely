@@ -1,4 +1,7 @@
 import { Controller, Get, Query, Req } from '@nestjs/common';
+
+import type { AuthenticatedRequest } from '../common/types/auth.types';
+
 import { FeedService } from './feed.service';
 
 @Controller('feed')
@@ -7,15 +10,13 @@ export class FeedController {
 
   @Get()
   getFeed(
-    @Req() req: any,
-    @Query('page') page?: string,
+    @Req() req: AuthenticatedRequest,
+    @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
-    @Query('radiusKm') radiusKm?: string,
   ) {
     return this.feed.getFeed(req.user.id, {
-      page: page ? Number(page) : 1,
+      cursor,
       limit: limit ? Number(limit) : 20,
-      radiusKm: radiusKm ? Number(radiusKm) : 16.0934, // 10 miles
     });
   }
 }

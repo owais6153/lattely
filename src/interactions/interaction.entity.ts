@@ -3,20 +3,23 @@ import {
   CreateDateColumn,
   Entity,
   ManyToOne,
-  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { User } from '../users/user.entity';
+
 import { Reel } from '../reels/reel.entity';
-import { InteractionProposal } from './proposal.entity';
+import { User } from '../users/user.entity';
 
 export type InteractionStatus =
   | 'PENDING'
-  | 'NEGOTIATING'
-  | 'ACCEPTED'
+  | 'CALL_READY'
+  | 'AWAITING_DECISIONS'
+  | 'MATCHED'
   | 'REJECTED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  | 'EXPIRED';
+
+export type PostCallDecision = 'YES' | 'NO';
 
 @Entity('date_requests')
 export class InteractionRequest {
@@ -34,6 +37,30 @@ export class InteractionRequest {
 
   @ManyToOne(() => Reel, { onDelete: 'CASCADE' })
   reel: Reel;
+
+  @Column({ type: 'datetime' })
+  windowStartAt: Date;
+
+  @Column({ type: 'datetime' })
+  windowEndAt: Date;
+
+  @Column({ type: 'datetime' })
+  expiresAt: Date;
+
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  requesterDecision: PostCallDecision | null;
+
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  recipientDecision: PostCallDecision | null;
+
+  @Column({ type: 'datetime', nullable: true })
+  confirmedAt: Date | null;
+
+  @Column({ type: 'datetime', nullable: true })
+  reminderSentAt: Date | null;
+
+  @Column({ type: 'datetime', nullable: true })
+  feedbackReminderSentAt: Date | null;
 
   // Final agreed time (on ACCEPT)
   @Column({ type: 'datetime', nullable: true })
@@ -61,9 +88,6 @@ export class InteractionRequest {
   // For 30-day cooldown
   @Column({ type: 'datetime', nullable: true })
   rejectedAt: Date | null;
-
-  @OneToMany(() => InteractionProposal, (p) => p.request)
-  proposals: InteractionProposal[];
 
   @CreateDateColumn()
   createdAt: Date;

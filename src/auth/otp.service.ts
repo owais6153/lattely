@@ -1,10 +1,13 @@
+import crypto from 'crypto';
+
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import crypto from 'crypto';
-import { Otp, OtpPurpose } from './otp.entity';
+
 import { User } from '../users/user.entity';
+
+import { Otp, OtpPurpose } from './otp.entity';
 
 @Injectable()
 export class OtpService {
@@ -14,7 +17,10 @@ export class OtpService {
   ) {}
 
   private hashCode(code: string) {
-    return crypto.createHash('sha256').update(code).digest('hex');
+    const secret =
+      this.cfg.get<string>('OTP_HASH_SECRET') ??
+      this.cfg.getOrThrow<string>('JWT_ACCESS_SECRET');
+    return crypto.createHmac('sha256', secret).update(code).digest('hex');
   }
 
   generateCode(): string {
@@ -26,7 +32,7 @@ export class OtpService {
     user: User,
     purpose: OtpPurpose,
   ): Promise<{ code: string; otp: Otp }> {
-    await this.repo.delete({ user: { id: user.id }, purpose } as any);
+    await this.repo.delete({ user: { id: user.id }, purpose });
 
     const code = this.generateCode();
     const ttlMin = Number(this.cfg.get<string>('OTP_TTL_MIN') || '10');
@@ -37,6 +43,7 @@ export class OtpService {
       codeHash: this.hashCode(code),
       expiresAt: new Date(Date.now() + ttlMin * 60 * 1000),
       lastSentAt: new Date(),
+      attemptCount: 0,
     });
 
     return { code, otp: await this.repo.save(otp) };
@@ -47,7 +54,7 @@ export class OtpService {
       this.cfg.get<string>('OTP_RESEND_COOLDOWN_SEC') || '60',
     );
     const existing = await this.repo.findOne({
-      where: { user: { id: userId }, purpose } as any,
+      where: { user: { id: userId }, purpose },
     });
     if (!existing?.lastSentAt) return;
 
@@ -65,8 +72,8 @@ export class OtpService {
     code: string,
   ): Promise<boolean> {
     const otp = await this.repo.findOne({
-      where: { user: { id: userId }, purpose } as any,
-      select: ['id', 'codeHash', 'expiresAt'],
+      where: { user: { id: userId }, purpose },
+      select: ['id', 'codeHash', 'expiresAt', 'attemptCount'],
       relations: ['user'],
     });
 
@@ -74,10 +81,24 @@ export class OtpService {
     if (otp.expiresAt.getTime() < Date.now())
       throw new BadRequestException('OTP expired.');
 
-    const ok = otp.codeHash === this.hashCode(code);
-    await this.repo.save(otp);
+    const expected = Buffer.from(otp.codeHash, 'hex');
+    const supplied = Buffer.from(this.hashCode(code), 'hex');
+    const ok =
+      expected.length === supplied.length &&
+      crypto.timingSafeEqual(expected, supplied);
 
-    if (!ok) throw new BadRequestException('Invalid OTP.');
+    if (!ok) {
+      otp.attemptCount += 1;
+      const maxAttempts = this.cfg.get<number>('OTP_MAX_ATTEMPTS') ?? 5;
+      if (otp.attemptCount >= maxAttempts) {
+        await this.repo.delete({ id: otp.id });
+        throw new BadRequestException(
+          'Too many invalid attempts. Request a new code.',
+        );
+      }
+      await this.repo.save(otp);
+      throw new BadRequestException('Invalid OTP.');
+    }
 
     await this.repo.delete({ id: otp.id });
     return true;

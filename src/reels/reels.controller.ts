@@ -10,16 +10,19 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ReelsService } from './reels.service';
+
+import type { AuthenticatedRequest } from '../common/types/auth.types';
+
 import { reelsMulterOptions } from './multer-reels.config';
 import { UploadReelMetaDto } from './reels.dto';
+import { ReelsService } from './reels.service';
 
 @Controller('reels')
 export class ReelsController {
   constructor(private readonly reels: ReelsService) {}
 
   @Get('me')
-  getMine(@Req() req: any) {
+  getMine(@Req() req: AuthenticatedRequest) {
     return this.reels.getCurrentReel(req.user.id);
   }
 
@@ -27,11 +30,11 @@ export class ReelsController {
   @UseInterceptors(
     FileInterceptor(
       'video',
-      reelsMulterOptions(Number(process.env.MAX_REEL_MB || '6000')),
+      reelsMulterOptions(Number(process.env.MAX_REEL_MB || '100')),
     ),
   )
   upload(
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
     @UploadedFile() file: Express.Multer.File,
     @Body() meta: UploadReelMetaDto,
   ) {
@@ -42,11 +45,11 @@ export class ReelsController {
   @UseInterceptors(
     FileInterceptor(
       'video',
-      reelsMulterOptions(Number(process.env.MAX_REEL_MB || '6000')),
+      reelsMulterOptions(Number(process.env.MAX_REEL_MB || '100')),
     ),
   )
   replace(
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
     @UploadedFile() file: Express.Multer.File,
     @Body() meta: UploadReelMetaDto,
   ) {
@@ -54,7 +57,7 @@ export class ReelsController {
   }
 
   @Delete('me')
-  remove(@Req() req: any) {
+  remove(@Req() req: AuthenticatedRequest) {
     return this.reels.deleteReel(req.user.id);
   }
 }

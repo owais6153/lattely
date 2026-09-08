@@ -2,9 +2,11 @@ import {
   Column,
   CreateDateColumn,
   Entity,
-  ManyToOne,
+  JoinColumn,
+  OneToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+
 import { InteractionRequest } from '../interactions/interaction.entity';
 
 export type PreCallStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
@@ -14,7 +16,8 @@ export class PreDateCall {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => InteractionRequest, { onDelete: 'CASCADE' })
+  @OneToOne(() => InteractionRequest, { onDelete: 'CASCADE' })
+  @JoinColumn()
   request: InteractionRequest;
 
   @Column({ type: 'varchar', length: 120 })
@@ -28,6 +31,9 @@ export class PreDateCall {
 
   @Column({ type: 'datetime', nullable: true })
   completedAt: Date | null;
+
+  @Column({ type: 'datetime', nullable: true })
+  endsAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;

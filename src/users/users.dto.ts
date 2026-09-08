@@ -3,14 +3,32 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  MinLength,
   Max,
   Min,
   MaxLength,
 } from 'class-validator';
-import type { AvailabilitySlot, InterestedGender } from './user.entity';
+
+import type { AvailabilitySlot, Gender, InterestedGender } from './user.entity';
+
+export class UpdateProfileDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  firstName: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  lastName: string;
+
+  @IsEnum(['MALE', 'FEMALE', 'NON_BINARY'])
+  gender: Gender;
+}
 
 export class UpdateLocationDto {
   @IsString()
+  @MinLength(1)
   @MaxLength(300)
   address: string;
 

@@ -1,17 +1,23 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, Req } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+
 import { Public } from '../common/decorators/public.decorator';
-import { AuthService } from './auth.service';
+import type { AuthenticatedRequest } from '../common/types/auth.types';
+
 import {
   ForgotPasswordDto,
   LoginDto,
   RegisterDto,
   ResendOtpDto,
   ResetPasswordDto,
+  RefreshTokenDto,
+  DeleteAccountDto,
   VerifyEmailDto,
 } from './auth.dto';
-import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guards';
+import { AuthService } from './auth.service';
 
 @Controller('auth')
+@Throttle({ default: { limit: 10, ttl: 60000 } })
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
@@ -51,9 +57,28 @@ export class AuthController {
     return this.auth.resetPassword(dto.email, dto.code, dto.newPassword);
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get('me')
-  me(@Req() req: any) {
+  me(@Req() req: AuthenticatedRequest) {
     return this.auth.me(req.user.id);
+  }
+
+  @Public()
+  @Post('refresh')
+  refresh(@Body() dto: RefreshTokenDto) {
+    return this.auth.refresh(dto.refreshToken);
+  }
+
+  @Public()
+  @Post('logout')
+  logout(@Body() dto: RefreshTokenDto) {
+    return this.auth.logout(dto.refreshToken);
+  }
+
+  @Delete('account')
+  deleteAccount(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: DeleteAccountDto,
+  ) {
+    return this.auth.deleteAccount(req.user.id, dto.password);
   }
 }

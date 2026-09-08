@@ -6,6 +6,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+
 import { User } from '../users/user.entity';
 
 export type OtpPurpose = 'VERIFY_EMAIL' | 'RESET_PASSWORD';
@@ -30,6 +31,9 @@ export class Otp {
 
   @Column({ type: 'datetime', nullable: true })
   lastSentAt: Date | null;
+
+  @Column({ type: 'int', default: 0 })
+  attemptCount: number;
 
   @CreateDateColumn()
   createdAt: Date;

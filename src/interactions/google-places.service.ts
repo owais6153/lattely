@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 type PeriodPoint = { day?: number; hour?: number; minute?: number };
@@ -26,6 +26,8 @@ type Candidate = {
 
 @Injectable()
 export class GooglePlacesService {
+  private readonly logger = new Logger(GooglePlacesService.name);
+
   constructor(private readonly cfg: ConfigService) {}
 
   private apiKey() {
@@ -35,13 +37,21 @@ export class GooglePlacesService {
   }
 
   private radiusMeters() {
-    return Number(
+    const configured = Number(
       this.cfg.get<string>('GOOGLE_PLACES_RADIUS_METERS') || '2000',
     );
+    return Math.min(Math.max(configured, 100), 50000);
   }
 
   private maxResults() {
-    return Number(this.cfg.get<string>('GOOGLE_PLACES_MAX_RESULTS') || '1');
+    const configured = Number(
+      this.cfg.get<string>('GOOGLE_PLACES_MAX_RESULTS') || '10',
+    );
+    return Math.min(Math.max(configured, 1), 20);
+  }
+
+  private timeoutMs() {
+    return Number(this.cfg.get<string>('GOOGLE_PLACES_TIMEOUT_MS') || '10000');
   }
 
   private haversineMeters(
@@ -134,32 +144,50 @@ export class GooglePlacesService {
     if (Number.isNaN(proposed.getTime()))
       throw new BadRequestException('Invalid proposedStartAt');
 
-    const res = await fetch(
-      'https://places.googleapis.com/v1/places:searchNearby',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': this.apiKey(),
-          'X-Goog-FieldMask':
-            'places.id,places.displayName,places.formattedAddress,places.location,places.regularOpeningHours,places.timeZone',
-        },
-        body: JSON.stringify({
-          includedTypes: ['restaurant'],
-          maxResultCount: this.maxResults(),
-          locationRestriction: {
-            circle: {
-              center: { latitude: midLat, longitude: midLng },
-              radius: this.radiusMeters(),
-            },
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs());
+    let res: Response;
+    try {
+      res = await fetch(
+        'https://places.googleapis.com/v1/places:searchNearby',
+        {
+          method: 'POST',
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': this.apiKey(),
+            'X-Goog-FieldMask':
+              'places.id,places.displayName,places.formattedAddress,places.location,places.regularOpeningHours,places.timeZone',
           },
-        }),
-      },
-    );
+          body: JSON.stringify({
+            // Include cafes and expand the configured radius so rural matches do
+            // not fail solely because the nearest venue is not a restaurant.
+            includedTypes: ['restaurant', 'cafe', 'coffee_shop'],
+            maxResultCount: this.maxResults(),
+            locationRestriction: {
+              circle: {
+                center: { latitude: midLat, longitude: midLng },
+                radius: Math.min(this.radiusMeters() * 3, 10000),
+              },
+            },
+          }),
+        },
+      );
+    } catch {
+      throw new BadRequestException(
+        'Restaurant search is temporarily unavailable.',
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!res.ok) {
-      const t = await res.text().catch(() => '');
-      throw new BadRequestException(`Google Places error: ${res.status} ${t}`);
+      this.logger.error(
+        `Google Places request failed with status ${res.status}.`,
+      );
+      throw new BadRequestException(
+        'Restaurant search is temporarily unavailable.',
+      );
     }
 
     const data = (await res.json()) as { places?: Place[] };
@@ -199,7 +227,9 @@ export class GooglePlacesService {
     }
 
     if (candidates.length === 0)
-      throw new BadRequestException('No restaurants found nearby.');
+      throw new BadRequestException(
+        'No suitable coffee place was found nearby.',
+      );
 
     // Prefer verified-open restaurants if possible, then nearest to midpoint
     const verifiedOpen = candidates.filter(

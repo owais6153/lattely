@@ -1,5 +1,6 @@
-import ffprobeStatic from 'ffprobe-static';
 import { execFile } from 'child_process';
+
+import ffprobeStatic from 'ffprobe-static';
 
 export function getVideoDurationSec(filePath: string): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -20,7 +21,11 @@ export function getVideoDurationSec(filePath: string): Promise<number> {
         filePath,
       ],
       (err, stdout) => {
-        if (err) return reject(err);
+        if (err) {
+          return reject(
+            err instanceof Error ? err : new Error('Unable to inspect video.'),
+          );
+        }
         const n = Number(String(stdout).trim());
         if (!Number.isFinite(n) || n <= 0)
           return reject(new Error('Invalid duration'));

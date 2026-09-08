@@ -4,6 +4,8 @@ import prettierPlugin from 'eslint-plugin-prettier/recommended';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import security from 'eslint-plugin-security';
+import importPlugin from 'eslint-plugin-import';
+import unicorn from 'eslint-plugin-unicorn';
 
 export default tseslint.config(
   {
@@ -35,9 +37,13 @@ export default tseslint.config(
       },
     },
     plugins: {
+      ...prettierPlugin.plugins,
+      import: importPlugin,
       security,
+      unicorn,
     },
     rules: {
+      ...prettierPlugin.rules,
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'error',

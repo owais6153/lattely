@@ -1,9 +1,12 @@
-import { BadRequestException } from '@nestjs/common';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
 import crypto from 'crypto';
 
-export function reelsMulterOptions(maxMb: number) {
+import { BadRequestException } from '@nestjs/common';
+import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
+import type { Request } from 'express';
+import { diskStorage } from 'multer';
+import type { FileFilterCallback } from 'multer';
+
+export function reelsMulterOptions(maxMb: number): MulterOptions {
   const maxBytes = maxMb * 1024 * 1024;
 
   return {
@@ -12,7 +15,14 @@ export function reelsMulterOptions(maxMb: number) {
         cb(null, 'public/uploads/reels');
       },
       filename: (req, file, cb) => {
-        const safeExt = extname(file.originalname).toLowerCase();
+        const safeExt =
+          (
+            {
+              'video/mp4': '.mp4',
+              'video/quicktime': '.mov',
+              'video/webm': '.webm',
+            } as Record<string, string>
+          )[file.mimetype] ?? '.mp4';
         const name = crypto.randomUUID();
         cb(null, `OSK-${name}${safeExt}`);
       },
@@ -20,7 +30,11 @@ export function reelsMulterOptions(maxMb: number) {
     limits: {
       fileSize: maxBytes,
     },
-    fileFilter: (req: any, file: any, cb: any) => {
+    fileFilter: (
+      _req: Request,
+      file: Express.Multer.File,
+      cb: FileFilterCallback,
+    ) => {
       const allowedMime = new Set([
         'video/mp4',
         'video/quicktime', // .mov
@@ -32,7 +46,6 @@ export function reelsMulterOptions(maxMb: number) {
           new BadRequestException(
             'Invalid video format. Allowed: mp4, mov, webm.',
           ),
-          false,
         );
       }
       cb(null, true);

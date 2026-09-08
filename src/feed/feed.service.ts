@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+
 import { Reel } from '../reels/reel.entity';
 import { User } from '../users/user.entity';
 
@@ -16,20 +17,18 @@ export class FeedService {
     return [interested];
   }
 
-  async getFeed(
-    userId: string,
-    opts: { page: number; limit: number; radiusKm: number },
-  ) {
+  async getFeed(userId: string, opts: { cursor?: string; limit: number }) {
     const user = await this.usersRepo.findOne({
       where: { id: userId },
-      select: [
-        'id',
-        'lat',
-        'lng',
-        'interestedGender',
-        'weekdaysAvailability',
-        'weekendsAvailability',
-      ] as any,
+      select: {
+        id: true,
+        gender: true,
+        lat: true,
+        lng: true,
+        interestedGender: true,
+        weekdaysAvailability: true,
+        weekendsAvailability: true,
+      },
     });
 
     if (!user) throw new BadRequestException('User not found.');
@@ -43,10 +42,14 @@ export class FeedService {
       throw new BadRequestException('Preferences missing.');
     }
 
-    const page = Math.max(1, opts.page || 1);
     const limit = Math.min(Math.max(1, opts.limit || 20), 50);
-    const radiusKm = Math.min(Math.max(1, opts.radiusKm || 50), 200);
-    const skip = (page - 1) * limit;
+    if (opts.cursor && opts.cursor.length > 500)
+      throw new BadRequestException('Invalid feed cursor.');
+    const radiusKm = 16.0934;
+    const latDelta = radiusKm / 111.32;
+    const lngDelta =
+      radiusKm /
+      (111.32 * Math.max(Math.cos((user.lat * Math.PI) / 180), 0.01));
 
     const genders = this.allowedGenders(user.interestedGender);
 
@@ -60,34 +63,86 @@ export class FeedService {
         'u.gender',
         'u.weekdaysAvailability',
         'u.weekendsAvailability',
-      ] as any)
+      ])
       .where('u.id != :userId', { userId })
       .andWhere('u.gender IN (:...genders)', { genders })
-      .andWhere('u.weekdaysAvailability = :wda', {
-        wda: user.weekdaysAvailability,
+      .andWhere(
+        '(u.interestedGender = :viewerGender OR u.interestedGender = :anyGender)',
+        { viewerGender: user.gender, anyGender: 'DOESNT_MATTER' },
+      )
+      .andWhere('u.lat BETWEEN :minLat AND :maxLat', {
+        minLat: user.lat - latDelta,
+        maxLat: user.lat + latDelta,
       })
-      .andWhere('u.weekendsAvailability = :wea', {
-        wea: user.weekendsAvailability,
+      .andWhere('u.lng BETWEEN :minLng AND :maxLng', {
+        minLng: user.lng - lngDelta,
+        maxLng: user.lng + lngDelta,
       })
       .andWhere(
+        `NOT EXISTS (
+        SELECT 1 FROM cooldowns c
+        WHERE c.expiresAt > NOW() AND
+          ((c.userAId = :userId AND c.userBId = u.id) OR (c.userBId = :userId AND c.userAId = u.id))
+      )`,
+      )
+      .andWhere(
+        `NOT EXISTS (
+        SELECT 1 FROM user_blocks b
+        WHERE (b.blockerId = :userId AND b.blockedId = u.id)
+           OR (b.blockedId = :userId AND b.blockerId = u.id)
+      )`,
+      )
+      .andWhere(
         `ST_Distance_Sphere(
-          POINT(reel.lng, reel.lat),
+          POINT(u.lng, u.lat),
           POINT(:lng, :lat)
         ) <= :meters`,
         { lat: user.lat, lng: user.lng, meters: radiusKm * 1000 },
       )
       .orderBy('reel.createdAt', 'DESC')
-      .skip(skip)
-      .take(limit);
+      .addOrderBy('reel.id', 'DESC')
+      .take(limit + 1);
 
-    const items = await qb.getMany();
+    if (opts.cursor) {
+      let decoded: { createdAt: string; id: string };
+      try {
+        decoded = JSON.parse(
+          Buffer.from(opts.cursor, 'base64url').toString('utf8'),
+        ) as typeof decoded;
+      } catch {
+        throw new BadRequestException('Invalid feed cursor.');
+      }
+      const createdAt = new Date(decoded.createdAt);
+      if (!decoded.id || Number.isNaN(createdAt.getTime()))
+        throw new BadRequestException('Invalid feed cursor.');
+      qb.andWhere(
+        '(reel.createdAt < :cursorDate OR (reel.createdAt = :cursorDate AND reel.id < :cursorId))',
+        {
+          cursorDate: createdAt,
+          cursorId: decoded.id,
+        },
+      );
+    }
+
+    const rows = await qb.getMany();
+    const hasMore = rows.length > limit;
+    const items = rows.slice(0, limit);
+    const last = items.at(-1);
 
     return {
-      page,
       limit,
       radiusKm,
       count: items.length,
-      items: items.map((r: any) => ({
+      nextCursor:
+        hasMore && last
+          ? Buffer.from(
+              JSON.stringify({
+                createdAt: last.createdAt.toISOString(),
+                id: last.id,
+              }),
+            ).toString('base64url')
+          : null,
+      items: items.map((r) => ({
         reelId: r.id,
         videoUrl: r.videoUrl,
         durationSec: r.durationSec,

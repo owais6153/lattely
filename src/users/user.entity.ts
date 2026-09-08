@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+
 import { Reel } from '../reels/reel.entity';
 
 export type Gender = 'MALE' | 'FEMALE' | 'NON_BINARY';
@@ -38,6 +39,9 @@ export class User {
   @Column({ type: 'boolean', default: false })
   reelUploaded: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  permissionsCompleted: boolean;
+
   @Column({ type: 'varchar', length: 10, default: 'NON_BINARY' })
   gender: Gender;
 
@@ -46,6 +50,9 @@ export class User {
 
   @Column({ type: 'varchar', length: 60 })
   lastName: string;
+
+  @Column({ type: 'date' })
+  birthDate: string;
 
   // Step 2: location (nullable until user completes it)
   @Column({ type: 'varchar', length: 300, nullable: true })
