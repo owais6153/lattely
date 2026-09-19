@@ -1,13 +1,10 @@
 import {
   IsEmail,
-  IsDateString,
-  IsEnum,
   IsString,
   MaxLength,
+  Matches,
   MinLength,
 } from 'class-validator';
-
-import type { Gender } from '../users/user.entity';
 
 export class RegisterDto {
   @IsEmail()
@@ -16,22 +13,6 @@ export class RegisterDto {
   @MinLength(8)
   @MaxLength(72)
   password: string;
-
-  @IsEnum(['MALE', 'FEMALE', 'NON_BINARY'])
-  gender: Gender;
-
-  @IsString()
-  @MinLength(1)
-  @MaxLength(60)
-  firstName: string;
-
-  @IsString()
-  @MinLength(1)
-  @MaxLength(60)
-  lastName: string;
-
-  @IsDateString({ strict: true })
-  birthDate: string;
 }
 
 export class VerifyEmailDto {
@@ -39,6 +20,7 @@ export class VerifyEmailDto {
   email: string;
 
   @IsString()
+  @Matches(/^\d{6}$/, { message: 'Code must contain exactly 6 digits.' })
   code: string;
 }
 

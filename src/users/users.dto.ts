@@ -1,16 +1,79 @@
+import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsDateString,
   IsEnum,
+  IsIn,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
+  Matches,
   MinLength,
   Max,
   Min,
   MaxLength,
+  ValidateNested,
 } from 'class-validator';
 
-import type { AvailabilitySlot, Gender, InterestedGender } from './user.entity';
+import type {
+  AvailabilityDay,
+  AvailabilitySlot,
+  Gender,
+  Interest,
+  InterestedGender,
+} from './user.entity';
+
+const INTERESTS: Interest[] = [
+  'COFFEE',
+  'MUSIC',
+  'ART',
+  'TRAVEL',
+  'FITNESS',
+  'BOOKS',
+  'FOOD',
+  'MOVIES',
+  'GAMING',
+  'NATURE',
+  'PHOTOGRAPHY',
+  'FASHION',
+  'SPORTS',
+  'COOKING',
+  'DOGS',
+];
+
+const DAYS: AvailabilityDay[] = [
+  'MON',
+  'TUE',
+  'WED',
+  'THU',
+  'FRI',
+  'SAT',
+  'SUN',
+];
+
+export class TimeWindowDto {
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  start: string;
+
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  end: string;
+}
+
+export class CoffeeAvailabilityDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(7)
+  @IsIn(DAYS, { each: true })
+  days: AvailabilityDay[];
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => TimeWindowDto)
+  timeWindow: TimeWindowDto;
+}
 
 export class UpdateProfileDto {
   @IsString()
@@ -23,8 +86,14 @@ export class UpdateProfileDto {
   @MaxLength(60)
   lastName: string;
 
-  @IsEnum(['MALE', 'FEMALE', 'NON_BINARY'])
+  @IsEnum(['MALE', 'FEMALE', 'NON_BINARY', 'PREFER_NOT_TO_SAY'])
   gender: Gender;
+
+  @IsDateString({ strict: true })
+  birthDate: string;
+
+  @IsEnum(['MALE', 'FEMALE', 'NON_BINARY', 'DOESNT_MATTER'])
+  interestedGender: InterestedGender;
 }
 
 export class UpdateBirthDateDto {
@@ -60,12 +129,28 @@ export class UpdateLocationDto {
 }
 
 export class UpdatePreferencesDto {
+  @IsOptional()
   @IsEnum(['MALE', 'FEMALE', 'NON_BINARY', 'DOESNT_MATTER'])
-  interestedGender: InterestedGender;
+  interestedGender?: InterestedGender;
 
+  @IsOptional()
   @IsEnum(['MORNING', 'EVENING'])
-  weekdaysAvailability: AvailabilitySlot;
+  weekdaysAvailability?: AvailabilitySlot;
 
+  @IsOptional()
   @IsEnum(['MORNING', 'EVENING'])
-  weekendsAvailability: AvailabilitySlot;
+  weekendsAvailability?: AvailabilitySlot;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(3)
+  @ArrayMaxSize(15)
+  @IsIn(INTERESTS, { each: true })
+  interests?: Interest[];
+
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => CoffeeAvailabilityDto)
+  coffeeAvailability?: CoffeeAvailabilityDto;
 }

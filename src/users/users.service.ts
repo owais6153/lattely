@@ -29,6 +29,8 @@ const SAFE_USER_SELECT = {
   interestedGender: true,
   weekdaysAvailability: true,
   weekendsAvailability: true,
+  interests: true,
+  coffeeAvailability: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -139,20 +141,46 @@ export class UsersService {
     const lastName = dto.lastName.trim();
     if (!firstName || !lastName)
       throw new BadRequestException('First and last name are required.');
+    assertAdultBirthDate(dto.birthDate);
     await this.repo.update(
       { id: userId },
-      { firstName, lastName, gender: dto.gender },
+      {
+        firstName,
+        lastName,
+        gender: dto.gender,
+        birthDate: dto.birthDate,
+        interestedGender: dto.interestedGender,
+      },
     );
     return this.findById(userId);
   }
 
   async updatePreferences(userId: string, dto: UpdatePreferencesDto) {
+    if (
+      dto.interestedGender === undefined &&
+      dto.weekdaysAvailability === undefined &&
+      dto.weekendsAvailability === undefined &&
+      dto.interests === undefined &&
+      dto.coffeeAvailability === undefined
+    ) {
+      throw new BadRequestException('At least one preference is required.');
+    }
+    if (dto.coffeeAvailability) {
+      const { start, end } = dto.coffeeAvailability.timeWindow;
+      if (start >= end) {
+        throw new BadRequestException(
+          'Availability end time must be after its start time.',
+        );
+      }
+    }
     await this.repo.update(
       { id: userId },
       {
         interestedGender: dto.interestedGender,
         weekdaysAvailability: dto.weekdaysAvailability,
         weekendsAvailability: dto.weekendsAvailability,
+        interests: dto.interests,
+        coffeeAvailability: dto.coffeeAvailability,
       },
     );
     return this.findById(userId);
@@ -166,9 +194,13 @@ export class UsersService {
     if (!u.address || u.lat == null || u.lng == null)
       throw new BadRequestException('Location is required.');
     if (
+      !u.firstName ||
+      !u.lastName ||
+      !u.birthDate ||
+      !u.gender ||
       !u.interestedGender ||
-      !u.weekdaysAvailability ||
-      !u.weekendsAvailability
+      !u.interests?.length ||
+      !u.coffeeAvailability
     ) {
       throw new BadRequestException('Preferences are required.');
     }

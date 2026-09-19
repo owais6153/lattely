@@ -22,4 +22,4 @@ Unit tests cover reel replacement/deletion behavior, environment safety, time-zo
 
 ## Dependency audit note
 
-The complete backend dependency audit is clean. Expo’s current SDK-compatible toolchain reports moderate transitive npm advisories for build/config packages; npm proposes incompatible Expo downgrades, so forced remediation is intentionally not applied.
+The backend audit currently reports Multer denial-of-service advisories through the Nest platform adapter; npm only offers a forced Nest 12 upgrade, so that breaking framework migration is not applied automatically. Expo’s current SDK-compatible toolchain reports moderate transitive npm advisories for build/config packages; npm proposes incompatible Expo downgrades, so forced remediation is intentionally not applied.

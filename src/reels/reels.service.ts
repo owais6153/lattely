@@ -89,10 +89,10 @@ export class ReelsService implements OnModuleInit {
       );
     }
 
-    if (durationSec < 5 || durationSec > 60) {
+    if (durationSec < 8 || durationSec > 10) {
       await this.safeDelete(file.path);
       throw new BadRequestException(
-        'Reel duration must be between 5 and 60 seconds.',
+        'Vibe video duration must be between 8 and 10 seconds.',
       );
     }
     return durationSec;
@@ -122,6 +122,23 @@ export class ReelsService implements OnModuleInit {
     if (!user.isEmailVerified) {
       await this.safeDelete(file.path);
       throw new BadRequestException('Verify email first.');
+    }
+    if (
+      !user.permissionsCompleted ||
+      !user.firstName ||
+      !user.lastName ||
+      !user.birthDate ||
+      !user.gender ||
+      !user.interestedGender ||
+      !user.interests?.length ||
+      !user.coffeeAvailability ||
+      user.lat == null ||
+      user.lng == null
+    ) {
+      await this.safeDelete(file.path);
+      throw new BadRequestException(
+        'Complete onboarding before uploading a vibe video.',
+      );
     }
 
     const existing = await this.repo.findOne({

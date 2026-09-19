@@ -2,9 +2,9 @@
 
 ## Authentication and onboarding
 
-The auth API covers registration, login, email verification, resend, recovery, rotating refresh sessions, logout, and account deletion. Registration and `PATCH /users/birth-date` enforce 18+ from a real calendar date; legacy accounts without one are kept out of discovery until they provide it. OTPs use keyed HMAC hashes, constant-time comparison, five-attempt invalidation, and resend throttling.
+The auth API covers registration, login, email verification, resend, recovery, rotating refresh sessions, logout, and account deletion. Registration initially accepts only email and password; `PATCH /users/profile` then enforces names, a supported gender, and an 18+ real calendar birth date. Legacy accounts without a birth date are kept out of discovery until they provide it. OTPs use keyed HMAC hashes, constant-time comparison, five-attempt invalidation, and resend throttling.
 
-`PATCH /users/permissions`, `/users/profile`, `/users/location`, and `/users/preferences` complete onboarding and support profile edits. Reel upload/read/replace/delete supports one validated 5–60 second MP4/MOV/WebM vibe. Stored file extensions derive from MIME type and Docker uses system ffprobe on every CPU architecture.
+`PATCH /users/permissions`, `/users/profile`, `/users/location`, and `/users/preferences` complete onboarding and support profile edits. Preferences persist stable interest IDs and normalized day/time coffee availability. Reel upload/read/replace/delete supports one validated 8–10 second MP4/MOV/WebM vibe. Stored file extensions derive from MIME type and Docker uses system ffprobe on every CPU architecture.
 
 ## Discovery
 

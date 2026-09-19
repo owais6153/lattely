@@ -10,13 +10,41 @@ import {
 
 import { Reel } from '../reels/reel.entity';
 
-export type Gender = 'MALE' | 'FEMALE' | 'NON_BINARY';
+export type Gender = 'MALE' | 'FEMALE' | 'NON_BINARY' | 'PREFER_NOT_TO_SAY';
 export type InterestedGender =
   | 'MALE'
   | 'FEMALE'
   | 'NON_BINARY'
   | 'DOESNT_MATTER';
 export type AvailabilitySlot = 'MORNING' | 'EVENING';
+export type Interest =
+  | 'COFFEE'
+  | 'MUSIC'
+  | 'ART'
+  | 'TRAVEL'
+  | 'FITNESS'
+  | 'BOOKS'
+  | 'FOOD'
+  | 'MOVIES'
+  | 'GAMING'
+  | 'NATURE'
+  | 'PHOTOGRAPHY'
+  | 'FASHION'
+  | 'SPORTS'
+  | 'COOKING'
+  | 'DOGS';
+export type AvailabilityDay =
+  | 'MON'
+  | 'TUE'
+  | 'WED'
+  | 'THU'
+  | 'FRI'
+  | 'SAT'
+  | 'SUN';
+export type CoffeeAvailability = {
+  days: AvailabilityDay[];
+  timeWindow: { start: string; end: string };
+};
 
 @Entity('users')
 export class User {
@@ -42,14 +70,14 @@ export class User {
   @Column({ type: 'boolean', default: false })
   permissionsCompleted: boolean;
 
-  @Column({ type: 'varchar', length: 10, default: 'NON_BINARY' })
-  gender: Gender;
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  gender: Gender | null;
 
-  @Column({ type: 'varchar', length: 60 })
-  firstName: string;
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  firstName: string | null;
 
-  @Column({ type: 'varchar', length: 60 })
-  lastName: string;
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  lastName: string | null;
 
   @Column({ type: 'date', nullable: true })
   birthDate: string | null;
@@ -79,6 +107,12 @@ export class User {
 
   @Column({ type: 'varchar', length: 10, nullable: true })
   weekendsAvailability: AvailabilitySlot | null;
+
+  @Column({ type: 'json', nullable: true })
+  interests: Interest[] | null;
+
+  @Column({ type: 'json', nullable: true })
+  coffeeAvailability: CoffeeAvailability | null;
 
   @OneToOne(() => Reel, (reel) => reel.user)
   reel?: Reel;

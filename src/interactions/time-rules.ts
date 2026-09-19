@@ -1,5 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 
+import type { CoffeeAvailability } from '../users/user.entity';
+
 function localParts(date: Date, timeZone?: string) {
   if (!timeZone) {
     return {
@@ -50,6 +52,78 @@ function localParts(date: Date, timeZone?: string) {
 export function isWeekend(d: Date, timeZone?: string) {
   const day = localParts(d, timeZone).weekday;
   return day === 0 || day === 6;
+}
+
+const DAY_CODES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const;
+
+function minutes(value: string) {
+  const [hour, minute] = value.split(':').map(Number);
+  return hour * 60 + minute;
+}
+
+export function assertTodayAndInCoffeeAvailability(
+  proposed: Date,
+  availability: CoffeeAvailability,
+  timeZone?: string,
+  now = new Date(),
+) {
+  const proposedParts = localParts(proposed, timeZone);
+  const nowParts = localParts(now, timeZone);
+  if (
+    proposedParts.year !== nowParts.year ||
+    proposedParts.month !== nowParts.month ||
+    proposedParts.day !== nowParts.day
+  ) {
+    throw new BadRequestException('You can only request time for today.');
+  }
+  if (proposed.getTime() <= now.getTime()) {
+    throw new BadRequestException('Selected time must be in the future.');
+  }
+  if (!availability.days.includes(DAY_CODES[proposedParts.weekday])) {
+    throw new BadRequestException('Selected day is outside availability.');
+  }
+  const proposedMinutes = proposedParts.hour * 60 + proposedParts.minute;
+  if (
+    proposedMinutes < minutes(availability.timeWindow.start) ||
+    proposedMinutes >= minutes(availability.timeWindow.end)
+  ) {
+    throw new BadRequestException('Selected time is outside availability.');
+  }
+}
+
+export function buildCoffeeWindowForAvailability(
+  start: Date,
+  availability: CoffeeAvailability,
+  timeZone?: string,
+  now = new Date(),
+) {
+  assertTodayAndInCoffeeAvailability(start, availability, timeZone, now);
+  if (start.getTime() < now.getTime() + 30 * 60 * 1000) {
+    throw new BadRequestException(
+      'The coffee window must start at least 30 minutes from now.',
+    );
+  }
+  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+  const startParts = localParts(start, timeZone);
+  const endParts = localParts(end, timeZone);
+  if (
+    startParts.year !== endParts.year ||
+    startParts.month !== endParts.month ||
+    startParts.day !== endParts.day
+  ) {
+    throw new BadRequestException(
+      'The two-hour window must remain within today.',
+    );
+  }
+  if (
+    endParts.hour * 60 + endParts.minute >
+    minutes(availability.timeWindow.end)
+  ) {
+    throw new BadRequestException(
+      'The two-hour window must fit within the selected availability period.',
+    );
+  }
+  return { start, end };
 }
 
 // MVP windows (server-side interpretation)

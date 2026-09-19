@@ -4,6 +4,7 @@ import { resolve, sep } from 'path';
 import {
   BadRequestException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -11,7 +12,6 @@ import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 
 import { MailService } from '../mail/mail.service';
-import { assertAdultBirthDate } from '../users/age-rules';
 import { UsersService } from '../users/users.service';
 
 import { RegisterDto } from './auth.dto';
@@ -22,6 +22,8 @@ const REEL_STORAGE_ROOT = resolve('public/uploads/reels');
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly cfg: ConfigService,
     private readonly jwt: JwtService,
@@ -55,15 +57,27 @@ export class AuthService {
 
   async register(dto: RegisterDto) {
     const email = dto.email.toLowerCase();
-    const firstName = dto.firstName.trim();
-    const lastName = dto.lastName.trim();
-    if (!firstName || !lastName)
-      throw new BadRequestException('First and last name are required.');
-
-    assertAdultBirthDate(dto.birthDate);
-
     const existing = await this.users.findByEmail(email);
-    if (existing) throw new BadRequestException('Email already in use.');
+    if (existing) {
+      const existingForAuth = await this.users.findForAuthByEmail(email);
+      const canRecover =
+        !existing.isEmailVerified &&
+        existingForAuth &&
+        (await this.verifyPassword(dto.password, existingForAuth.passwordHash));
+      if (!canRecover) {
+        throw new BadRequestException('Email already in use.');
+      }
+
+      await this.otp.enforceResendCooldown(existing.id, 'VERIFY_EMAIL');
+      const { code } = await this.otp.createOrReplace(existing, 'VERIFY_EMAIL');
+      await this.mail.sendOtpEmail(email, 'VERIFY_EMAIL', code);
+      return {
+        message: 'Registration recovered. OTP sent to email.',
+        user: existing,
+        accessToken: this.signAccess(existing),
+        refreshToken: await this.refreshTokens.issue(existing),
+      };
+    }
 
     const created = await this.users.createUser({
       email,
@@ -72,10 +86,10 @@ export class AuthService {
       isEmailVerified: false,
       reelUploaded: false,
       permissionsCompleted: false,
-      gender: dto.gender,
-      firstName,
-      lastName,
-      birthDate: dto.birthDate,
+      gender: null,
+      firstName: null,
+      lastName: null,
+      birthDate: null,
 
       address: null,
       lat: null,
@@ -85,16 +99,23 @@ export class AuthService {
       interestedGender: null,
       weekdaysAvailability: null,
       weekendsAvailability: null,
+      interests: null,
+      coffeeAvailability: null,
     });
 
     const { code } = await this.otp.createOrReplace(created, 'VERIFY_EMAIL');
-    await this.mail.sendOtpEmail(email, 'VERIFY_EMAIL', code);
+    await this.mail.sendOtpEmail(email, 'VERIFY_EMAIL', code).catch((error) => {
+      this.logger.error(
+        `Initial verification email delivery failed for user ${created.id}. The account can recover through resend.`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    });
 
     const accessToken = this.signAccess(created);
     const refreshToken = await this.refreshTokens.issue(created);
 
     return {
-      message: 'Registered. OTP sent to email.',
+      message: 'Registered. Check your email for the verification code.',
       user: created,
       accessToken,
       refreshToken,
@@ -141,13 +162,6 @@ export class AuthService {
 
     const ok = await this.verifyPassword(password, u.passwordHash);
     if (!ok) throw new UnauthorizedException('Invalid credentials.');
-    if (!u.isEmailVerified) {
-      throw new UnauthorizedException({
-        code: 'EMAIL_NOT_VERIFIED',
-        message: 'Verify your email before signing in.',
-      });
-    }
-
     const safeUser = await this.users.findById(u.id);
     const accessToken = this.signAccess(u);
     const refreshToken = await this.refreshTokens.issue(u);

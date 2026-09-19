@@ -45,7 +45,7 @@ describe('ReelsService current reel management', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     service = new ReelsService(repo as never, requestsRepo as never, users as never);
-    mockedDuration.mockResolvedValue(30);
+    mockedDuration.mockResolvedValue(9);
     mockedUnlink.mockResolvedValue();
   });
 
@@ -77,7 +77,7 @@ describe('ReelsService current reel management', () => {
     const result = await service.replaceReel('user-1', file, { lat: 3 });
 
     expect(repo.save).toHaveBeenCalledWith(
-      expect.objectContaining({ videoUrl: 'public/uploads/reels/new.mp4', durationSec: 30, lat: 3 }),
+      expect.objectContaining({ videoUrl: 'public/uploads/reels/new.mp4', durationSec: 9, lat: 3 }),
     );
     expect(mockedUnlink).toHaveBeenCalledWith(resolve('public/uploads/reels/old.mp4'));
     expect(result).toEqual(expect.objectContaining({ message: 'Reel replaced.', user }));

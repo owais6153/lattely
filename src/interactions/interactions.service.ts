@@ -22,7 +22,7 @@ import { InteractionRequest } from './interaction.entity';
 import { MeetupFeedback } from './meetup-feedback.entity';
 import { SafetyReport } from './safety-report.entity';
 import {
-  assertTodayAndInAvailability,
+  buildCoffeeWindowForAvailability,
   buildCoffeeWindow,
   isWeekend,
 } from './time-rules';
@@ -290,16 +290,32 @@ export class InteractionsService {
     const slot = isWeekend(start, timeZone)
       ? actor.weekendsAvailability
       : actor.weekdaysAvailability;
-    if (!slot) throw new BadRequestException('Set availability first.');
-    const { end } = buildCoffeeWindow(start, slot, timeZone);
+    if (!actor.coffeeAvailability && !slot) {
+      throw new BadRequestException('Set availability first.');
+    }
+    const { end } = actor.coffeeAvailability
+      ? buildCoffeeWindowForAvailability(
+          start,
+          actor.coffeeAvailability,
+          timeZone,
+        )
+      : buildCoffeeWindow(start, slot!, timeZone);
     const recipientSlot = isWeekend(start, timeZone)
       ? recipient.weekendsAvailability
       : recipient.weekdaysAvailability;
-    if (!recipientSlot) {
+    if (!recipient.coffeeAvailability && !recipientSlot) {
       throw new BadRequestException('This person has not set availability.');
     }
     try {
-      assertTodayAndInAvailability(start, recipientSlot, timeZone);
+      if (recipient.coffeeAvailability) {
+        buildCoffeeWindowForAvailability(
+          start,
+          recipient.coffeeAvailability,
+          timeZone,
+        );
+      } else {
+        buildCoffeeWindow(start, recipientSlot!, timeZone);
+      }
     } catch {
       throw new BadRequestException(
         "Selected time is outside this person's availability.",

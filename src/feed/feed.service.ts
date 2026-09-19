@@ -13,7 +13,9 @@ export class FeedService {
   ) {}
 
   private allowedGenders(interested: string): string[] {
-    if (interested === 'DOESNT_MATTER') return ['MALE', 'FEMALE', 'NON_BINARY'];
+    if (interested === 'DOESNT_MATTER') {
+      return ['MALE', 'FEMALE', 'NON_BINARY', 'PREFER_NOT_TO_SAY'];
+    }
     return [interested];
   }
 
@@ -22,22 +24,40 @@ export class FeedService {
       where: { id: userId },
       select: {
         id: true,
+        isEmailVerified: true,
+        permissionsCompleted: true,
+        firstName: true,
+        lastName: true,
+        birthDate: true,
         gender: true,
         lat: true,
         lng: true,
         interestedGender: true,
         weekdaysAvailability: true,
         weekendsAvailability: true,
+        coffeeAvailability: true,
+        interests: true,
       },
     });
 
     if (!user) throw new BadRequestException('User not found.');
+    if (
+      !user.isEmailVerified ||
+      !user.permissionsCompleted ||
+      !user.firstName ||
+      !user.lastName ||
+      !user.birthDate ||
+      !user.gender ||
+      !user.interests?.length
+    ) {
+      throw new BadRequestException('Complete onboarding first.');
+    }
     if (user.lat == null || user.lng == null)
       throw new BadRequestException('Location missing.');
     if (
       !user.interestedGender ||
-      !user.weekdaysAvailability ||
-      !user.weekendsAvailability
+      (!user.coffeeAvailability &&
+        (!user.weekdaysAvailability || !user.weekendsAvailability))
     ) {
       throw new BadRequestException('Preferences missing.');
     }

@@ -15,9 +15,9 @@ export type AuthenticatedUser = {
   isEmailVerified: boolean;
   birthDate: string | null;
   reelUploaded: boolean;
-  gender: string;
-  firstName: string;
-  lastName: string;
+  gender: string | null;
+  firstName: string | null;
+  lastName: string | null;
 };
 
 export type AuthenticatedRequest = Request & {

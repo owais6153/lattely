@@ -1,6 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 
-import { assertTodayAndInAvailability, buildCoffeeWindow, isWeekend } from './time-rules';
+import {
+  assertTodayAndInAvailability,
+  buildCoffeeWindow,
+  buildCoffeeWindowForAvailability,
+  isWeekend,
+} from './time-rules';
 
 describe('date availability time zones', () => {
   beforeEach(() => {
@@ -66,6 +71,27 @@ describe('date availability time zones', () => {
         'MORNING',
         'UTC',
         new Date('2026-09-08T06:00:00.000Z'),
+      ),
+    ).toThrow('fit within the selected availability');
+  });
+
+  it('enforces normalized day and 24-hour availability windows', () => {
+    const availability = {
+      days: ['TUE'] as const,
+      timeWindow: { start: '17:00', end: '21:00' },
+    };
+    expect(
+      buildCoffeeWindowForAvailability(
+        new Date('2026-09-08T18:00:00.000Z'),
+        { ...availability, days: [...availability.days] },
+        'UTC',
+      ).end.toISOString(),
+    ).toBe('2026-09-08T20:00:00.000Z');
+    expect(() =>
+      buildCoffeeWindowForAvailability(
+        new Date('2026-09-08T20:00:00.000Z'),
+        { ...availability, days: [...availability.days] },
+        'UTC',
       ),
     ).toThrow('fit within the selected availability');
   });

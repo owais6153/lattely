@@ -41,10 +41,12 @@ describe('ReelRequiredGuard onboarding routes', () => {
     expect(guard.canActivate(context(true, false, 'ADMIN'))).toBe(true);
   });
 
-  it('blocks a legacy user until a real birth date is collected', () => {
+  it('allows staged onboarding without a birth date but blocks normal app routes', () => {
     const legacyContext = context(true);
     const request = legacyContext.switchToHttp().getRequest();
     request.user.birthDate = null;
+    expect(guard.canActivate(legacyContext)).toBe(true);
+    request.route.path = '/feed';
     expect(guard.canActivate(legacyContext)).toBe(false);
     request.route.path = '/users/birth-date';
     expect(guard.canActivate(legacyContext)).toBe(true);

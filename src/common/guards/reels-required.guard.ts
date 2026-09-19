@@ -54,12 +54,12 @@ export class ReelRequiredGuard implements CanActivate {
     if (!user) return false;
     if (user.role === 'ADMIN') return true;
 
+    if (this.verifiedOnboardingRoutes.has(fullPath)) {
+      return user.isEmailVerified;
+    }
+
     if (fullPath === '/users/birth-date') return user.isEmailVerified;
     if (!user.isEmailVerified || !user.birthDate) return false;
-
-    if (this.verifiedOnboardingRoutes.has(fullPath)) {
-      return true;
-    }
 
     return !!user.reelUploaded;
   }
