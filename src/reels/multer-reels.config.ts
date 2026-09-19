@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import { mkdirSync } from 'fs';
+import { resolve } from 'path';
 
 import { BadRequestException } from '@nestjs/common';
 import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
@@ -6,13 +8,20 @@ import type { Request } from 'express';
 import { diskStorage } from 'multer';
 import type { FileFilterCallback } from 'multer';
 
+const REEL_UPLOAD_DIRECTORY = resolve('public/uploads/reels');
+
 export function reelsMulterOptions(maxMb: number): MulterOptions {
   const maxBytes = maxMb * 1024 * 1024;
 
   return {
     storage: diskStorage({
-      destination: (req, file, cb) => {
-        cb(null, 'public/uploads/reels');
+      destination: (_req, _file, cb) => {
+        try {
+          mkdirSync(REEL_UPLOAD_DIRECTORY, { recursive: true });
+          cb(null, REEL_UPLOAD_DIRECTORY);
+        } catch (error) {
+          cb(error as Error, REEL_UPLOAD_DIRECTORY);
+        }
       },
       filename: (req, file, cb) => {
         const safeExt =
