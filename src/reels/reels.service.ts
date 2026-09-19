@@ -133,24 +133,6 @@ export class ReelsService implements OnModuleInit {
       await this.safeDelete(file.path);
       throw new BadRequestException('Verify email first.');
     }
-    if (
-      !user.permissionsCompleted ||
-      !user.firstName ||
-      !user.lastName ||
-      !user.birthDate ||
-      !user.gender ||
-      !user.interestedGender ||
-      !user.interests?.length ||
-      !user.coffeeAvailability ||
-      user.lat == null ||
-      user.lng == null
-    ) {
-      await this.safeDelete(file.path);
-      throw new BadRequestException(
-        'Complete onboarding before uploading a vibe video.',
-      );
-    }
-
     const existing = await this.repo.findOne({
       where: { user: { id: userId } },
       relations: ['user'],
