@@ -89,9 +89,11 @@ export class ReelsService implements OnModuleInit {
       this.logger.error(
         `Unable to inspect uploaded video at "${file.path}": ${cause.message ?? String(error)}`,
       );
-      if (cause.code === 'ENOENT') {
+      if (cause.code === 'ENOENT' || cause.code === 'EACCES') {
         throw new ServiceUnavailableException(
-          'Video processing is unavailable because ffprobe is not installed on the server.',
+          cause.code === 'EACCES'
+            ? 'Video processing is unavailable because ffprobe is not executable on the server.'
+            : 'Video processing is unavailable because ffprobe is not installed on the server.',
         );
       }
       throw new BadRequestException(
