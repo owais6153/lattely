@@ -50,4 +50,14 @@ export class MailService {
       text,
     });
   }
+
+  async sendTestEmail(to: string) {
+    const appName = this.cfg.get<string>('APP_NAME') || 'App';
+    await this.transporter.sendMail({
+      from: this.cfg.get<string>('MAIL_FROM'),
+      to,
+      subject: `${appName} SMTP test`,
+      text: `${appName} email delivery is configured correctly.`,
+    });
+  }
 }

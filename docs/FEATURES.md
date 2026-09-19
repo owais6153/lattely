@@ -25,3 +25,5 @@ Expo push tokens are registered at `/notifications/push-token`. Requests, confir
 ## Operations
 
 `GET /health` checks database readiness. Production uses validated environment configuration, explicit migrations, scoped CORS, proxy-aware throttling, graceful shutdown, and the included Docker image.
+
+Development also exposes a throttled `POST /mail/test` SMTP smoke test. The route returns 404 outside `APP_ENV=development`.
