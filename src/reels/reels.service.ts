@@ -8,6 +8,7 @@ import {
   Logger,
   NotFoundException,
   OnModuleInit,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -82,8 +83,17 @@ export class ReelsService implements OnModuleInit {
     let durationSec = 0;
     try {
       durationSec = await getVideoDurationSec(file.path);
-    } catch {
+    } catch (error) {
       await this.safeDelete(file.path);
+      const cause = error as NodeJS.ErrnoException;
+      this.logger.error(
+        `Unable to inspect uploaded video at "${file.path}": ${cause.message ?? String(error)}`,
+      );
+      if (cause.code === 'ENOENT') {
+        throw new ServiceUnavailableException(
+          'Video processing is unavailable because ffprobe is not installed on the server.',
+        );
+      }
       throw new BadRequestException(
         'Unable to read video duration. Please upload a valid video file.',
       );
