@@ -86,8 +86,15 @@ export function validateEnvironment(config: Record<string, unknown>) {
   }
 
   const synchronize = booleanValue(config.DB_SYNCHRONIZE, !production);
+  const bypassCoffeeTimeRules = booleanValue(
+    config.BYPASS_COFFEE_TIME_RULES,
+    false,
+  );
   if (production && synchronize) {
     throw new Error('DB_SYNCHRONIZE cannot be enabled in production.');
+  }
+  if (production && bypassCoffeeTimeRules) {
+    throw new Error('BYPASS_COFFEE_TIME_RULES cannot be enabled in production.');
   }
 
   return {
@@ -97,6 +104,7 @@ export function validateEnvironment(config: Record<string, unknown>) {
     APP_PORT: positiveInteger(config.APP_PORT, 3000, 'APP_PORT'),
     DB_PORT: positiveInteger(config.DB_PORT, 3306, 'DB_PORT'),
     DB_SYNCHRONIZE: synchronize,
+    BYPASS_COFFEE_TIME_RULES: bypassCoffeeTimeRules,
     DB_RUN_MIGRATIONS: booleanValue(config.DB_RUN_MIGRATIONS, production),
     JWT_ACCESS_TTL_MINUTES: positiveInteger(
       config.JWT_ACCESS_TTL_MINUTES,

@@ -287,39 +287,49 @@ export class InteractionsService {
     const start = new Date(windowStartIso);
     if (Number.isNaN(start.getTime()))
       throw new BadRequestException('Invalid windowStartAt.');
+    const bypassCoffeeTimeRules =
+      this.config.get<boolean>('BYPASS_COFFEE_TIME_RULES') === true;
     const slot = isWeekend(start, timeZone)
       ? actor.weekendsAvailability
       : actor.weekdaysAvailability;
-    if (!actor.coffeeAvailability && !slot) {
+    if (!bypassCoffeeTimeRules && !actor.coffeeAvailability && !slot) {
       throw new BadRequestException('Set availability first.');
     }
-    const { end } = actor.coffeeAvailability
-      ? buildCoffeeWindowForAvailability(
-          start,
-          actor.coffeeAvailability,
-          timeZone,
-        )
-      : buildCoffeeWindow(start, slot!, timeZone);
+    const end = bypassCoffeeTimeRules
+      ? new Date(start.getTime() + 2 * 60 * 60 * 1000)
+      : actor.coffeeAvailability
+        ? buildCoffeeWindowForAvailability(
+            start,
+            actor.coffeeAvailability,
+            timeZone,
+          ).end
+        : buildCoffeeWindow(start, slot!, timeZone).end;
     const recipientSlot = isWeekend(start, timeZone)
       ? recipient.weekendsAvailability
       : recipient.weekdaysAvailability;
-    if (!recipient.coffeeAvailability && !recipientSlot) {
+    if (
+      !bypassCoffeeTimeRules &&
+      !recipient.coffeeAvailability &&
+      !recipientSlot
+    ) {
       throw new BadRequestException('This person has not set availability.');
     }
-    try {
-      if (recipient.coffeeAvailability) {
-        buildCoffeeWindowForAvailability(
-          start,
-          recipient.coffeeAvailability,
-          timeZone,
+    if (!bypassCoffeeTimeRules) {
+      try {
+        if (recipient.coffeeAvailability) {
+          buildCoffeeWindowForAvailability(
+            start,
+            recipient.coffeeAvailability,
+            timeZone,
+          );
+        } else {
+          buildCoffeeWindow(start, recipientSlot!, timeZone);
+        }
+      } catch {
+        throw new BadRequestException(
+          "Selected time is outside this person's availability.",
         );
-      } else {
-        buildCoffeeWindow(start, recipientSlot!, timeZone);
       }
-    } catch {
-      throw new BadRequestException(
-        "Selected time is outside this person's availability.",
-      );
     }
 
     await this.enforceQuota(actor.id);

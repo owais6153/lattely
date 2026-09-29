@@ -163,6 +163,8 @@ export class FeedService {
     return {
       limit,
       radiusKm,
+      bypassCoffeeTimeRules:
+        process.env.BYPASS_COFFEE_TIME_RULES === 'true',
       count: items.length,
       nextCursor:
         hasMore && last
