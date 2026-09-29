@@ -14,6 +14,8 @@ Google Places is called only after both post-call decisions are Yes. Decisions c
 
 Only parties to recipient-confirmed requests obtain Agora tokens. Channels derive from request IDs; requester and recipient use deterministic UIDs 1 and 2. The client starts the server clock when it observes the second participant, the server stores the 60-second deadline, credentials never extend beyond the deadline grace period, and the client automatically leaves at zero.
 
+New multi-window requests stop after private mutual Yes decisions until the recipient selects one of the request's persisted proposals. `AWAITING_DECISIONS` remains the state during this pre-planning phase; the decision columns and `selectedTimeSlotId` provide the finer-grained state without adding another lifecycle status. Older rows without proposed slots keep the prior automatic venue-selection behavior.
+
 ## Replica-safe scheduled reminders
 
 Each scheduler may scan eligible rows, but a conditional database update atomically claims each reminder. Only the winning replica sends the notification.

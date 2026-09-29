@@ -21,6 +21,12 @@ export type InteractionStatus =
 
 export type PostCallDecision = 'YES' | 'NO';
 
+export type ProposedTimeSlot = {
+  id: string;
+  startAt: string;
+  endAt: string;
+};
+
 @Entity('date_requests')
 export class InteractionRequest {
   @PrimaryGeneratedColumn('uuid')
@@ -43,6 +49,12 @@ export class InteractionRequest {
 
   @Column({ type: 'datetime' })
   windowEndAt: Date;
+
+  @Column({ type: 'json', nullable: true })
+  proposedTimeSlots: ProposedTimeSlot[] | null;
+
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  selectedTimeSlotId: string | null;
 
   @Column({ type: 'datetime' })
   expiresAt: Date;

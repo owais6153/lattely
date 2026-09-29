@@ -9,7 +9,7 @@ The backend is a modular NestJS HTTP API. Controllers validate and authorize cal
 | `users` | Staged adult identity, permission acknowledgement, location, interests, preferences, and coffee availability |
 | `otps`, `refresh_tokens` | Attempt-limited verification and rotating sessions |
 | `reels` | One vibe per user |
-| `date_requests` | Two-hour window, decisions, lifecycle, confirmed meetup snapshot |
+| `date_requests` | Proposed two-hour windows, selected window, decisions, lifecycle, confirmed meetup snapshot |
 | `pre_date_calls` | Request-specific call and 60-second deadline |
 | `cooldowns`, `user_blocks` | Bilateral discovery exclusions |
 | `meetup_feedback`, `safety_reports` | Post-meet safety and moderation |

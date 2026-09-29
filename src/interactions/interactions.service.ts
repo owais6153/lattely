@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import {
   BadRequestException,
   ForbiddenException,
@@ -8,7 +10,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, MoreThan, MoreThanOrEqual, Repository } from 'typeorm';
+import { In, IsNull, MoreThan, MoreThanOrEqual, Repository } from 'typeorm';
 
 import { PreDateCall } from '../agora/pre-date-call.entity';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -172,6 +174,7 @@ export class InteractionsService {
         status: 'AWAITING_DECISIONS',
         requesterDecision: 'YES',
         recipientDecision: 'YES',
+        proposedTimeSlots: IsNull(),
         expiresAt: MoreThan(new Date()),
       },
       relations: ['requester'],
@@ -268,7 +271,7 @@ export class InteractionsService {
   async createCoffeeRequest(
     actorId: string,
     reelId: string,
-    windowStartIso: string,
+    proposedStartTimes: string[],
     timeZone?: string,
   ) {
     const [actor, reel] = await Promise.all([
@@ -284,53 +287,76 @@ export class InteractionsService {
     if (actor.id === recipient.id)
       throw new BadRequestException('You cannot request yourself.');
 
-    const start = new Date(windowStartIso);
-    if (Number.isNaN(start.getTime()))
-      throw new BadRequestException('Invalid windowStartAt.');
     const bypassCoffeeTimeRules =
       this.config.get<boolean>('BYPASS_COFFEE_TIME_RULES') === true;
-    const slot = isWeekend(start, timeZone)
-      ? actor.weekendsAvailability
-      : actor.weekdaysAvailability;
-    if (!bypassCoffeeTimeRules && !actor.coffeeAvailability && !slot) {
-      throw new BadRequestException('Set availability first.');
-    }
-    const end = bypassCoffeeTimeRules
-      ? new Date(start.getTime() + 2 * 60 * 60 * 1000)
-      : actor.coffeeAvailability
-        ? buildCoffeeWindowForAvailability(
-            start,
-            actor.coffeeAvailability,
-            timeZone,
-          ).end
-        : buildCoffeeWindow(start, slot!, timeZone).end;
-    const recipientSlot = isWeekend(start, timeZone)
-      ? recipient.weekendsAvailability
-      : recipient.weekdaysAvailability;
+    const parsedStarts = proposedStartTimes.map((value) => new Date(value));
+    const uniqueStarts = [
+      ...new Map(
+        parsedStarts.map((value) => [value.getTime(), value]),
+      ).values(),
+    ];
     if (
-      !bypassCoffeeTimeRules &&
-      !recipient.coffeeAvailability &&
-      !recipientSlot
+      uniqueStarts.length !== proposedStartTimes.length ||
+      uniqueStarts.some((start) => Number.isNaN(start.getTime()))
     ) {
-      throw new BadRequestException('This person has not set availability.');
+      throw new BadRequestException('Proposed times must be valid and unique.');
     }
-    if (!bypassCoffeeTimeRules) {
-      try {
-        if (recipient.coffeeAvailability) {
-          buildCoffeeWindowForAvailability(
-            start,
-            recipient.coffeeAvailability,
-            timeZone,
-          );
-        } else {
-          buildCoffeeWindow(start, recipientSlot!, timeZone);
+    const windows = uniqueStarts
+      .map((start) => {
+        const actorSlot = isWeekend(start, timeZone)
+          ? actor.weekendsAvailability
+          : actor.weekdaysAvailability;
+        const recipientSlot = isWeekend(start, timeZone)
+          ? recipient.weekendsAvailability
+          : recipient.weekdaysAvailability;
+        if (!bypassCoffeeTimeRules && !actor.coffeeAvailability && !actorSlot) {
+          throw new BadRequestException('Set availability first.');
         }
-      } catch {
-        throw new BadRequestException(
-          "Selected time is outside this person's availability.",
-        );
-      }
-    }
+        if (
+          !bypassCoffeeTimeRules &&
+          !recipient.coffeeAvailability &&
+          !recipientSlot
+        ) {
+          throw new BadRequestException(
+            'This person has not set availability.',
+          );
+        }
+        const end = bypassCoffeeTimeRules
+          ? new Date(start.getTime() + 2 * 60 * 60 * 1000)
+          : actor.coffeeAvailability
+            ? buildCoffeeWindowForAvailability(
+                start,
+                actor.coffeeAvailability,
+                timeZone,
+              ).end
+            : buildCoffeeWindow(start, actorSlot!, timeZone).end;
+        if (!bypassCoffeeTimeRules) {
+          try {
+            if (recipient.coffeeAvailability) {
+              buildCoffeeWindowForAvailability(
+                start,
+                recipient.coffeeAvailability,
+                timeZone,
+              );
+            } else {
+              buildCoffeeWindow(start, recipientSlot!, timeZone);
+            }
+          } catch {
+            throw new BadRequestException(
+              "A selected time is outside this person's availability.",
+            );
+          }
+        }
+        return { start, end };
+      })
+      .sort((a, b) => a.start.getTime() - b.start.getTime());
+    const proposedTimeSlots = windows.map(({ start, end }) => ({
+      id: randomUUID(),
+      startAt: start.toISOString(),
+      endAt: end.toISOString(),
+    }));
+    const start = windows[0].start;
+    const end = windows.at(-1)!.end;
 
     await this.enforceQuota(actor.id);
     await this.ensureNoBlockOrCooldown(actor, recipient);
@@ -361,6 +387,8 @@ export class InteractionsService {
         reel,
         windowStartAt: start,
         windowEndAt: end,
+        proposedTimeSlots,
+        selectedTimeSlotId: null,
         expiresAt: end,
         requesterDecision: null,
         recipientDecision: null,
@@ -388,6 +416,7 @@ export class InteractionsService {
       status: request.status,
       windowStartAt: start,
       windowEndAt: end,
+      proposedTimeSlots,
     };
   }
 
@@ -440,6 +469,19 @@ export class InteractionsService {
       });
       if (!request) throw new NotFoundException('Request not found.');
       this.ensureParty(userId, request);
+      const existingDecision =
+        request.requester.id === userId
+          ? request.requesterDecision
+          : request.recipientDecision;
+      if (request.status === 'REJECTED' && existingDecision === decision) {
+        return {
+          kind: 'response' as const,
+          response: {
+            message: 'Decision already saved privately.',
+            status: request.status,
+          },
+        };
+      }
       if (!['CALL_READY', 'AWAITING_DECISIONS'].includes(request.status)) {
         throw new BadRequestException('Post-call decision is not available.');
       }
@@ -509,6 +551,16 @@ export class InteractionsService {
         };
       }
       await requests.save(request);
+
+      if (request.proposedTimeSlots) {
+        return {
+          kind: 'response' as const,
+          response: {
+            message: 'Decision saved privately.',
+            status: request.status,
+          },
+        };
+      }
 
       if (
         request.requester.lat == null ||
@@ -622,6 +674,69 @@ export class InteractionsService {
     return finalized.response;
   }
 
+  async selectTimeSlot(
+    userId: string,
+    requestId: string,
+    selectedTimeSlotId: string,
+  ) {
+    const result = await this.reqRepo.manager.transaction(async (manager) => {
+      const requests = manager.getRepository(InteractionRequest);
+      const request = await requests.findOne({
+        where: { id: requestId },
+        relations: ['requester', 'recipient'],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!request) throw new NotFoundException('Request not found.');
+      if (request.recipient.id !== userId) {
+        throw new ForbiddenException('Only the recipient can select the time.');
+      }
+      if (
+        request.status !== 'AWAITING_DECISIONS' ||
+        request.recipientDecision !== 'YES'
+      ) {
+        throw new BadRequestException('Time selection is not available.');
+      }
+      if (request.expiresAt.getTime() <= Date.now()) {
+        throw new BadRequestException('This request has expired.');
+      }
+      const slot = request.proposedTimeSlots?.find(
+        (candidate) => candidate.id === selectedTimeSlotId,
+      );
+      if (!slot) {
+        throw new BadRequestException(
+          'The selected time was not proposed for this request.',
+        );
+      }
+      if (new Date(slot.startAt).getTime() <= Date.now()) {
+        throw new BadRequestException(
+          'The selected time is no longer available.',
+        );
+      }
+      if (request.selectedTimeSlotId) {
+        if (request.selectedTimeSlotId !== selectedTimeSlotId) {
+          throw new BadRequestException('The coffee time is already selected.');
+        }
+        return { request, slot, changed: false };
+      }
+      request.selectedTimeSlotId = selectedTimeSlotId;
+      await requests.save(request);
+      return { request, slot, changed: true };
+    });
+    if (result.changed) {
+      void this.notifications.send(
+        result.request.requester.id,
+        'Coffee time confirmed',
+        `${result.request.recipient.firstName} selected a proposed time.`,
+        `/match/${result.request.id}`,
+      );
+    }
+    return {
+      message: 'Coffee time selected.',
+      status: result.request.status,
+      selectedTimeSlot: result.slot,
+    };
+  }
+
   private async load(id: string) {
     const request = await this.reqRepo.findOne({
       where: { id },
@@ -640,6 +755,14 @@ export class InteractionsService {
       createdAt: request.createdAt,
       windowStartAt: request.windowStartAt,
       windowEndAt: request.windowEndAt,
+      proposedTimeSlots: request.proposedTimeSlots ?? [
+        {
+          id: 'legacy-window',
+          startAt: request.windowStartAt.toISOString(),
+          endAt: request.windowEndAt.toISOString(),
+        },
+      ],
+      selectedTimeSlotId: request.selectedTimeSlotId,
       otherUser: {
         id: other.id,
         firstName: other.firstName,
@@ -701,6 +824,9 @@ export class InteractionsService {
         request.requester.id === userId
           ? request.requesterDecision
           : request.recipientDecision,
+      bothHaveSaidYes:
+        request.requesterDecision === 'YES' &&
+        request.recipientDecision === 'YES',
       acceptedStartAt: request.acceptedStartAt,
       acceptedDurationSec: request.acceptedDurationSec,
       acceptedRestaurant: request.acceptedGooglePlaceId

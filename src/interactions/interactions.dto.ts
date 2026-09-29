@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   ArrayMaxSize,
+  ArrayMinSize,
   Max,
   MaxLength,
   Min,
@@ -17,13 +18,23 @@ import { FEEDBACK_TAGS, MEET_AGAIN_CHOICES } from './feedback.constants';
 import type { FeedbackTag, MeetAgainChoice } from './feedback.constants';
 
 export class CreateDateRequestDto {
-  @IsDateString()
-  windowStartAt: string;
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @IsDateString({}, { each: true })
+  proposedStartTimes: string[];
 
   @IsOptional()
   @IsString()
   @MaxLength(100)
   timeZone?: string;
+}
+
+export class SelectTimeSlotDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(36)
+  selectedTimeSlotId: string;
 }
 
 export class RespondDto {

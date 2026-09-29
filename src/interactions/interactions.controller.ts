@@ -10,6 +10,7 @@ import {
   PostCallDecisionDto,
   RespondDto,
   SafetyReportDto,
+  SelectTimeSlotDto,
 } from './interactions.dto';
 import { InteractionsService } from './interactions.service';
 
@@ -26,8 +27,21 @@ export class InteractionsController {
     return this.interactions.createCoffeeRequest(
       req.user.id,
       reelId,
-      body.windowStartAt,
+      body.proposedStartTimes,
       body.timeZone,
+    );
+  }
+
+  @Patch('requests/:id/time')
+  selectTime(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: SelectTimeSlotDto,
+  ) {
+    return this.interactions.selectTimeSlot(
+      req.user.id,
+      id,
+      body.selectedTimeSlotId,
     );
   }
 

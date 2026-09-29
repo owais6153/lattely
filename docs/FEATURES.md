@@ -12,9 +12,9 @@ The auth API covers registration, login, email verification, resend, recovery, r
 
 ## Coffee, call, and meetup
 
-`POST /reels/:reelId/react/coffee` creates a future two-hour window today with a 30-minute buffer that fits both users' selected availability period. Inbox, outbox, and detail expose state; `POST /requests/:id/respond` confirms or declines. Hour/day quotas run before any paid place lookup and a minute scheduler expires stale windows.
+`POST /reels/:reelId/react/coffee` creates one or more proposed future two-hour windows today with a 30-minute buffer, each fitting both users' selected availability period. Inbox, outbox, and detail expose the proposals and selected window; `POST /requests/:id/respond` confirms or declines. Hour/day quotas run before any paid place lookup and a minute scheduler expires stale windows.
 
-Confirmation enables a request-specific 60-second Agora call whose clock begins when the second participant connects. `POST /requests/:id/decision` records private Yes/No answers afterward. Either No starts a mutual 30-day cooldown; both Yes commits both decisions before the external venue lookup, then locks the time and stores a nearby restaurant/cafe/coffee-shop snapshot after an expanded-radius fallback search. The scheduler retries mutual-Yes venue failures and expires them at the request deadline. `POST /requests/:id/cancel` cancels a future locked meetup and notifies the other person.
+Confirmation enables a request-specific 60-second Agora call whose clock begins when the second participant connects. `POST /requests/:id/decision` records private Yes/No answers afterward. Either No starts a mutual 30-day cooldown. For multi-window requests, the recipient then persists one server-validated proposal through `PATCH /requests/:id/time`; venue planning intentionally remains pending for the later planning stage. Legacy single-window records retain the existing automatic mutual-Yes venue fallback. `POST /requests/:id/cancel` cancels a future locked meetup and notifies the other person.
 
 ## Feedback, safety, and notifications
 

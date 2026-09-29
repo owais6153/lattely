@@ -8,9 +8,9 @@ Last reviewed: 2026-09-09.
 - Permission, GPS location, preferences, and vibe onboarding without a reel-guard deadlock.
 - One validated 8–10 second MP4/MOV/WebM vibe per user.
 - Reciprocal-gender discovery at a server-locked 10 miles with bounding prefiltering, mutual cooldown/block exclusion, and cursor pagination. Coffee requests must fit both users' selected availability period.
-- Today-only two-hour coffee requests with a 30-minute buffer, user quotas, scheduled expiry, confirm/decline, and push deep links.
+- Today-only coffee requests with multiple proposed two-hour windows, a 30-minute buffer, user quotas, scheduled expiry, confirm/decline, and push deep links.
 - Confirmed-request Agora calls with participant UIDs 1/2, a persisted 60-second deadline that starts when both clients connect, 65-second maximum token TTL, countdown, and automatic leave.
-- Private mutual Yes/No decisions. Both Yes locks a meetup and fallback venue; transient venue failures retry automatically until the window expires; either No creates a mutual 30-day cooldown.
+- Private mutual Yes/No decisions. New requests wait for the recipient to select a persisted proposed window before later venue planning; legacy single-window requests retain automatic fallback venue matching. Either No creates a mutual 30-day cooldown.
 - Meetup reminders, cancellable upcoming meetups, 1â€“5/tagged post-window feedback, forced safety follow-up, block/report APIs, and an admin moderation queue.
 - Scoped CORS, Helmet, throttling, validation, provider timeouts, graceful shutdown, migrations, readiness checks, and a non-root Docker runtime with system ffprobe.
 
