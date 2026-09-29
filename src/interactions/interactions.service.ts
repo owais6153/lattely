@@ -444,17 +444,42 @@ export class InteractionsService {
       );
       return { message: 'Request declined.', status: request.status };
     }
-    request.status = 'CALL_READY';
-    request.confirmedAt = new Date();
+    const bypassVibeCall =
+      this.config.get<boolean>('BYPASS_VIBE_CALL') === true;
+    const confirmedAt = new Date();
+    request.status = bypassVibeCall ? 'AWAITING_DECISIONS' : 'CALL_READY';
+    request.confirmedAt = confirmedAt;
     await this.reqRepo.save(request);
+
+    if (bypassVibeCall) {
+      const existingCall = await this.callRepo.findOne({
+        where: { request: { id: request.id } },
+      });
+      await this.callRepo.save(
+        this.callRepo.create({
+          ...existingCall,
+          request,
+          channelName: existingCall?.channelName ?? `coffee_${request.id}`,
+          status: 'COMPLETED',
+          startedAt: existingCall?.startedAt ?? confirmedAt,
+          completedAt: confirmedAt,
+          endsAt: existingCall?.endsAt ?? confirmedAt,
+        }),
+      );
+    }
+
     void this.notifications.send(
       request.requester.id,
       'Coffee request confirmed',
-      'Your 60-second call is ready.',
-      `/call/${request.id}`,
+      bypassVibeCall
+        ? 'Development call bypass is enabled. Choose Yes or No.'
+        : 'Your 60-second call is ready.',
+      bypassVibeCall ? `/decision/${request.id}` : `/call/${request.id}`,
     );
     return {
-      message: 'Request confirmed. Start the 60-second call.',
+      message: bypassVibeCall
+        ? 'Request confirmed. Development call bypass applied.'
+        : 'Request confirmed. Start the 60-second call.',
       status: request.status,
     };
   }
@@ -485,17 +510,21 @@ export class InteractionsService {
       if (!['CALL_READY', 'AWAITING_DECISIONS'].includes(request.status)) {
         throw new BadRequestException('Post-call decision is not available.');
       }
-      const call = await manager.getRepository(PreDateCall).findOne({
-        where: { request: { id: request.id } },
-      });
-      if (
-        !call ||
-        (call.status !== 'COMPLETED' &&
-          (!call.endsAt || call.endsAt.getTime() > Date.now()))
-      ) {
-        throw new BadRequestException(
-          'Complete the 60-second call before deciding.',
-        );
+      const bypassVibeCall =
+        this.config.get<boolean>('BYPASS_VIBE_CALL') === true;
+      if (!bypassVibeCall) {
+        const call = await manager.getRepository(PreDateCall).findOne({
+          where: { request: { id: request.id } },
+        });
+        if (
+          !call ||
+          (call.status !== 'COMPLETED' &&
+            (!call.endsAt || call.endsAt.getTime() > Date.now()))
+        ) {
+          throw new BadRequestException(
+            'Complete the 60-second call before deciding.',
+          );
+        }
       }
       if (request.requester.id === userId) {
         if (request.requesterDecision && request.requesterDecision !== decision)

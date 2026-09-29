@@ -25,6 +25,10 @@ Use `DB_SYNCHRONIZE=true` only for disposable local databases. Production valida
 - `GOOGLE_PLACES_*`: API key, result count, radius, timeout.
 - `AGORA_*`: App ID, private certificate, and token TTL.
 
+For Expo Go flow testing without Agora, set `BYPASS_VIBE_CALL=true`. Confirming
+a request then records a completed development call and opens the private
+Yes/No decision stage. Environment validation rejects this flag in production.
+
 See `.env.example` for the complete names and safe defaults.
 
 ## Commands

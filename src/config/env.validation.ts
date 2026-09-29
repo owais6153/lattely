@@ -90,11 +90,17 @@ export function validateEnvironment(config: Record<string, unknown>) {
     config.BYPASS_COFFEE_TIME_RULES,
     false,
   );
+  const bypassVibeCall = booleanValue(config.BYPASS_VIBE_CALL, false);
   if (production && synchronize) {
     throw new Error('DB_SYNCHRONIZE cannot be enabled in production.');
   }
   if (production && bypassCoffeeTimeRules) {
-    throw new Error('BYPASS_COFFEE_TIME_RULES cannot be enabled in production.');
+    throw new Error(
+      'BYPASS_COFFEE_TIME_RULES cannot be enabled in production.',
+    );
+  }
+  if (production && bypassVibeCall) {
+    throw new Error('BYPASS_VIBE_CALL cannot be enabled in production.');
   }
 
   return {
@@ -105,6 +111,7 @@ export function validateEnvironment(config: Record<string, unknown>) {
     DB_PORT: positiveInteger(config.DB_PORT, 3306, 'DB_PORT'),
     DB_SYNCHRONIZE: synchronize,
     BYPASS_COFFEE_TIME_RULES: bypassCoffeeTimeRules,
+    BYPASS_VIBE_CALL: bypassVibeCall,
     DB_RUN_MIGRATIONS: booleanValue(config.DB_RUN_MIGRATIONS, production),
     JWT_ACCESS_TTL_MINUTES: positiveInteger(
       config.JWT_ACCESS_TTL_MINUTES,

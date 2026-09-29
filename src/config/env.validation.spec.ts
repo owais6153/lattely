@@ -25,6 +25,7 @@ describe('validateEnvironment', () => {
       APP_PORT: 3000,
       DB_PORT: 3306,
       DB_SYNCHRONIZE: false,
+      BYPASS_VIBE_CALL: false,
       DB_RUN_MIGRATIONS: true,
       JWT_ACCESS_TTL_MINUTES: 15,
       JWT_REFRESH_TTL_DAYS: 30,
@@ -39,6 +40,15 @@ describe('validateEnvironment', () => {
         DB_SYNCHRONIZE: 'true',
       }),
     ).toThrow('DB_SYNCHRONIZE cannot be enabled in production.');
+  });
+
+  it('rejects the vibe-call bypass in production', () => {
+    expect(() =>
+      validateEnvironment({
+        ...productionEnvironment,
+        BYPASS_VIBE_CALL: 'true',
+      }),
+    ).toThrow('BYPASS_VIBE_CALL cannot be enabled in production.');
   });
 
   it('reports missing production integrations', () => {
