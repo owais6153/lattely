@@ -8,7 +8,7 @@ The auth API covers registration, login, email verification, resend, recovery, r
 
 ## Discovery
 
-`GET /feed` returns reciprocal-gender candidates inside a non-bypassable 10-mile radius. Bounding-box and exact-distance filtering, cursor pagination, active mutual cooldowns, and blocks are enforced server-side. Availability is preference data, not an exact-match filter.
+`GET /feed` returns reciprocal-gender candidates inside a non-bypassable 10-mile radius, including each candidate's normalized or legacy coffee availability so clients can present valid request windows. Bounding-box and exact-distance filtering, cursor pagination, active mutual cooldowns, and blocks are enforced server-side. Availability is preference data, not an exact-match feed filter.
 
 ## Coffee, call, and meetup
 

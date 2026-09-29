@@ -83,6 +83,7 @@ export class FeedService {
         'u.gender',
         'u.weekdaysAvailability',
         'u.weekendsAvailability',
+        'u.coffeeAvailability',
       ])
       .where('u.id != :userId', { userId })
       .andWhere('u.gender IN (:...genders)', { genders })
@@ -182,6 +183,9 @@ export class FeedService {
           firstName: r.user?.firstName,
           lastName: r.user?.lastName,
           gender: r.user?.gender,
+          weekdaysAvailability: r.user?.weekdaysAvailability,
+          weekendsAvailability: r.user?.weekendsAvailability,
+          coffeeAvailability: r.user?.coffeeAvailability,
         },
       })),
     };
