@@ -50,6 +50,7 @@ import { UsersModule } from './users/users.module';
         username: cfg.get<string>('DB_USER'),
         password: cfg.get<string>('DB_PASS'),
         database: cfg.get<string>('DB_NAME'),
+        charset: 'utf8mb4',
         autoLoadEntities: true,
         synchronize: cfg.get<boolean>('DB_SYNCHRONIZE') ?? false,
         migrations: [join(__dirname, 'migrations/*{.ts,.js}')],

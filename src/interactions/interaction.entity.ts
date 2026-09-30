@@ -85,10 +85,22 @@ export class InteractionRequest {
   @Column({ type: 'varchar', length: 120, nullable: true })
   acceptedGooglePlaceId: string | null;
 
-  @Column({ type: 'varchar', length: 200, nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 200,
+    nullable: true,
+    charset: 'utf8mb4',
+    collation: 'utf8mb4_unicode_ci',
+  })
   acceptedRestaurantName: string | null;
 
-  @Column({ type: 'varchar', length: 300, nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 300,
+    nullable: true,
+    charset: 'utf8mb4',
+    collation: 'utf8mb4_unicode_ci',
+  })
   acceptedRestaurantAddress: string | null;
 
   @Column({ type: 'double', nullable: true })

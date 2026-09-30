@@ -15,6 +15,10 @@ npm run start:dev
 
 Use `DB_SYNCHRONIZE=true` only for disposable local databases. Production validation requires it to be false and defaults `DB_RUN_MIGRATIONS` to true.
 
+MySQL connections and restaurant text columns use `utf8mb4` so Google Places
+names and addresses can contain multilingual characters. Apply all migrations
+after deployment before restarting the API.
+
 ## Configuration groups
 
 - `APP_*`, `CORS_ORIGINS`, `TRUST_PROXY_HOPS`: network/runtime behavior.
