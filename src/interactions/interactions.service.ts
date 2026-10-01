@@ -721,6 +721,7 @@ export class InteractionsService {
       }
       if (
         request.status !== 'AWAITING_DECISIONS' ||
+        request.requesterDecision !== 'YES' ||
         request.recipientDecision !== 'YES'
       ) {
         throw new BadRequestException('Time selection is not available.');
