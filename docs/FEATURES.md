@@ -16,6 +16,8 @@ The auth API covers registration, login, email verification, resend, recovery, r
 
 Confirmation enables a request-specific 60-second Agora call whose clock begins when the second participant connects. `POST /requests/:id/decision` records private Yes/No answers afterward. Either No starts a mutual 30-day cooldown. For multi-window requests, the recipient then persists one server-validated proposal through `PATCH /requests/:id/time`; venue planning intentionally remains pending for the later planning stage. Legacy single-window records retain the existing automatic mutual-Yes venue fallback. `POST /requests/:id/cancel` cancels a future locked meetup and notifies the other person.
 
+`GET /meetups` returns the signed-in user's confirmed meetup timeline, including venue, participant, distance, timing, and per-user feedback state. `GET /meetups/:id/photo` resolves the selected venue's current Google Places photo and attribution metadata without exposing the provider API key.
+
 ## Feedback, safety, and notifications
 
 `POST /requests/:id/feedback` opens after the meetup window and records attendance, a 1â€“5 vibe rating, Yes/No/Maybe interest, structured tags, and an optional note. A safety-concern tag requires the client to continue to report/block. Safety routes immediately hide blocked pairs and store moderation reports; administrators can list and close flags without user-onboarding requirements.

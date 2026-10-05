@@ -829,6 +829,103 @@ export class InteractionsService {
     return items.map((item) => this.summary(item, userId));
   }
 
+  async listMeetups(userId: string) {
+    const items = await this.reqRepo.find({
+      where: [
+        { requester: { id: userId }, status: 'MATCHED' },
+        { recipient: { id: userId }, status: 'MATCHED' },
+      ],
+      relations: ['requester', 'recipient'],
+      order: { acceptedStartAt: 'ASC' },
+      take: 100,
+    });
+    const confirmed = items.filter(
+      (item) =>
+        item.acceptedStartAt &&
+        item.acceptedDurationSec &&
+        item.acceptedGooglePlaceId &&
+        item.acceptedRestaurantName &&
+        item.acceptedRestaurantLat != null &&
+        item.acceptedRestaurantLng != null,
+    );
+    const requestIds = confirmed.map((item) => item.id);
+    const feedback = requestIds.length
+      ? await this.feedbackRepo.find({
+          where: {
+            request: { id: In(requestIds) },
+            author: { id: userId },
+          },
+          relations: ['request'],
+        })
+      : [];
+    const reviewedIds = new Set(feedback.map((item) => item.request.id));
+
+    return confirmed.map((request) => {
+      const viewer =
+        request.requester.id === userId ? request.requester : request.recipient;
+      const other =
+        request.requester.id === userId ? request.recipient : request.requester;
+      const distanceMeters =
+        viewer.lat != null && viewer.lng != null
+          ? this.distanceMeters(
+              viewer.lat,
+              viewer.lng,
+              request.acceptedRestaurantLat!,
+              request.acceptedRestaurantLng!,
+            )
+          : null;
+
+      return {
+        id: request.id,
+        status: request.status,
+        startsAt: request.acceptedStartAt,
+        durationSec: request.acceptedDurationSec,
+        restaurant: {
+          googlePlaceId: request.acceptedGooglePlaceId,
+          name: request.acceptedRestaurantName,
+          address: request.acceptedRestaurantAddress,
+          lat: request.acceptedRestaurantLat,
+          lng: request.acceptedRestaurantLng,
+          distanceMeters,
+        },
+        otherUser: {
+          id: other.id,
+          firstName: other.firstName,
+          lastName: other.lastName,
+          gender: other.gender,
+        },
+        feedbackSubmitted: reviewedIds.has(request.id),
+      };
+    });
+  }
+
+  async getMeetupRestaurantPhoto(userId: string, requestId: string) {
+    const request = await this.load(requestId);
+    this.ensureParty(userId, request);
+    if (request.status !== 'MATCHED' || !request.acceptedGooglePlaceId) {
+      throw new BadRequestException('No confirmed meetup restaurant.');
+    }
+    return this.places.getPlacePhoto(request.acceptedGooglePlaceId);
+  }
+
+  private distanceMeters(
+    fromLat: number,
+    fromLng: number,
+    toLat: number,
+    toLng: number,
+  ) {
+    const earthRadiusMeters = 6371000;
+    const toRadians = (value: number) => (value * Math.PI) / 180;
+    const latitudeDelta = toRadians(toLat - fromLat);
+    const longitudeDelta = toRadians(toLng - fromLng);
+    const a =
+      Math.sin(latitudeDelta / 2) ** 2 +
+      Math.cos(toRadians(fromLat)) *
+        Math.cos(toRadians(toLat)) *
+        Math.sin(longitudeDelta / 2) ** 2;
+    return 2 * earthRadiusMeters * Math.asin(Math.sqrt(a));
+  }
+
   async getRequest(userId: string, requestId: string) {
     const request = await this.load(requestId);
     this.ensureParty(userId, request);

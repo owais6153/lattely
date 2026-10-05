@@ -11,6 +11,14 @@ type Place = {
   location?: { latitude?: number; longitude?: number };
   regularOpeningHours?: { periods?: Period[] };
   timeZone?: { id?: string };
+  photos?: Array<{
+    name?: string;
+    authorAttributions?: Array<{
+      displayName?: string;
+      uri?: string;
+      photoUri?: string;
+    }>;
+  }>;
 };
 
 type Candidate = {
@@ -52,6 +60,69 @@ export class GooglePlacesService {
 
   private timeoutMs() {
     return Number(this.cfg.get<string>('GOOGLE_PLACES_TIMEOUT_MS') || '10000');
+  }
+
+  async getPlacePhoto(placeId: string) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs());
+
+    try {
+      const placeResponse = await fetch(
+        `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`,
+        {
+          signal: controller.signal,
+          headers: {
+            'X-Goog-Api-Key': this.apiKey(),
+            'X-Goog-FieldMask': 'photos',
+          },
+        },
+      );
+      if (!placeResponse.ok) {
+        this.logger.warn(
+          `Google Places photo lookup failed with status ${placeResponse.status}.`,
+        );
+        return null;
+      }
+
+      const place = (await placeResponse.json()) as Place;
+      const photo = place.photos?.[0];
+      if (!photo?.name || !photo.name.startsWith('places/')) return null;
+
+      const mediaResponse = await fetch(
+        `https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=1200&skipHttpRedirect=true`,
+        {
+          signal: controller.signal,
+          headers: { 'X-Goog-Api-Key': this.apiKey() },
+        },
+      );
+      if (!mediaResponse.ok) {
+        this.logger.warn(
+          `Google Places photo media lookup failed with status ${mediaResponse.status}.`,
+        );
+        return null;
+      }
+
+      const media = (await mediaResponse.json()) as { photoUri?: string };
+      if (!media.photoUri) return null;
+
+      return {
+        url: media.photoUri,
+        attributions: (photo.authorAttributions ?? [])
+          .filter((item) => item.displayName)
+          .map((item) => ({
+            displayName: item.displayName!,
+            uri: item.uri ?? null,
+            photoUri: item.photoUri ?? null,
+          })),
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Google Places photo lookup failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   private haversineMeters(

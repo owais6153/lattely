@@ -55,6 +55,16 @@ export class InteractionsController {
     return this.interactions.listOutbox(req.user.id);
   }
 
+  @Get('meetups')
+  meetups(@Req() req: AuthenticatedRequest) {
+    return this.interactions.listMeetups(req.user.id);
+  }
+
+  @Get('meetups/:id/photo')
+  meetupPhoto(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.interactions.getMeetupRestaurantPhoto(req.user.id, id);
+  }
+
   @Get('requests/:id')
   get(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.interactions.getRequest(req.user.id, id);
