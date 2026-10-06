@@ -767,6 +767,147 @@ export class InteractionsService {
     };
   }
 
+  async planCoffee(userId: string, requestId: string) {
+    const prepared = await this.reqRepo.manager.transaction(async (manager) => {
+      const requests = manager.getRepository(InteractionRequest);
+      const request = await requests.findOne({
+        where: { id: requestId },
+        relations: ['requester', 'recipient'],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!request) throw new NotFoundException('Request not found.');
+      if (request.requester.id !== userId && request.recipient.id !== userId) {
+        throw new ForbiddenException('You are not part of this request.');
+      }
+      if (request.status === 'MATCHED') {
+        return {
+          kind: 'response' as const,
+          response: {
+            message: "It's already planned.",
+            status: request.status,
+          },
+        };
+      }
+      if (
+        request.status !== 'AWAITING_DECISIONS' ||
+        request.requesterDecision !== 'YES' ||
+        request.recipientDecision !== 'YES'
+      ) {
+        throw new BadRequestException('Both people must say yes first.');
+      }
+      if (!request.selectedTimeSlotId) {
+        throw new BadRequestException('Choose a coffee time first.');
+      }
+      const slot = request.proposedTimeSlots?.find(
+        (candidate) => candidate.id === request.selectedTimeSlotId,
+      );
+      if (!slot) {
+        throw new BadRequestException(
+          'The selected coffee time is unavailable.',
+        );
+      }
+      const lockedStart = new Date(slot.startAt);
+      if (lockedStart.getTime() <= Date.now()) {
+        throw new BadRequestException('The selected coffee time has passed.');
+      }
+      if (
+        request.requester.lat == null ||
+        request.requester.lng == null ||
+        request.recipient.lat == null ||
+        request.recipient.lng == null
+      ) {
+        throw new BadRequestException('Both users need a current location.');
+      }
+      return {
+        kind: 'finalize' as const,
+        selectedTimeSlotId: request.selectedTimeSlotId,
+        lockedStart,
+        midpoint: {
+          lat: (request.requester.lat + request.recipient.lat) / 2,
+          lng: (request.requester.lng + request.recipient.lng) / 2,
+        },
+      };
+    });
+
+    if (prepared.kind === 'response') return prepared.response;
+
+    const { chosen } = await this.places.pickOneRestaurant(
+      prepared.midpoint.lat,
+      prepared.midpoint.lng,
+      prepared.lockedStart.toISOString(),
+    );
+
+    const finalized = await this.reqRepo.manager.transaction(
+      async (manager) => {
+        const requests = manager.getRepository(InteractionRequest);
+        const request = await requests.findOne({
+          where: { id: requestId },
+          relations: ['requester', 'recipient'],
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!request) throw new NotFoundException('Request not found.');
+        if (request.status === 'MATCHED') {
+          return {
+            response: {
+              message: "It's already planned.",
+              status: request.status,
+            },
+          };
+        }
+        if (
+          request.status !== 'AWAITING_DECISIONS' ||
+          request.requesterDecision !== 'YES' ||
+          request.recipientDecision !== 'YES' ||
+          request.selectedTimeSlotId !== prepared.selectedTimeSlotId
+        ) {
+          throw new BadRequestException(
+            'The coffee plan has changed. Try again.',
+          );
+        }
+
+        request.status = 'MATCHED';
+        request.acceptedStartAt = prepared.lockedStart;
+        request.acceptedDurationSec = 3600;
+        request.acceptedGooglePlaceId = chosen.googlePlaceId;
+        request.acceptedRestaurantName = chosen.name;
+        request.acceptedRestaurantAddress = chosen.address;
+        request.acceptedRestaurantLat = chosen.lat;
+        request.acceptedRestaurantLng = chosen.lng;
+        await requests.save(request);
+
+        return {
+          response: { message: 'Coffee planned.', status: request.status },
+          match: {
+            requestId: request.id,
+            requesterId: request.requester.id,
+            recipientId: request.recipient.id,
+            placeName: chosen.name,
+          },
+        };
+      },
+    );
+
+    if (finalized.match) {
+      const url = `/requests/${finalized.match.requestId}`;
+      void Promise.all([
+        this.notifications.send(
+          finalized.match.requesterId,
+          'Coffee planned',
+          `Meet at ${finalized.match.placeName}.`,
+          url,
+        ),
+        this.notifications.send(
+          finalized.match.recipientId,
+          'Coffee planned',
+          `Meet at ${finalized.match.placeName}.`,
+          url,
+        ),
+      ]);
+    }
+
+    return finalized.response;
+  }
+
   private async load(id: string) {
     const request = await this.reqRepo.findOne({
       where: { id },

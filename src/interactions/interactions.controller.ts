@@ -45,6 +45,11 @@ export class InteractionsController {
     );
   }
 
+  @Post('requests/:id/plan')
+  planCoffee(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.interactions.planCoffee(req.user.id, id);
+  }
+
   @Get('requests/inbox')
   inbox(@Req() req: AuthenticatedRequest) {
     return this.interactions.listInbox(req.user.id);
